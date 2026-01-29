@@ -1,268 +1,203 @@
-# 🗺️ Project Roadmap – NAS Financial AWS Cloud Architecture
+# NAS Financial AWS Cloud Migration (Terraform + Jenkins)
+
+This repository contains an enterprise-style AWS cloud architecture project for **NAS Financial Group**, designed and implemented using **Terraform (Infrastructure as Code)** and a **Jenkins CI/CD pipeline**.
+
+The goal is to migrate selected workloads from on-prem to AWS while meeting strict requirements around:
+- IAM governance (multi-team access control)
+- PCI (encrypted traffic)
+- GDPR geo-access controls
+- High availability + auto scaling
+- Private intranet application
+- Cross-account auditing (N2G Auditing)
+- Monitoring + alerting
+- Disaster recovery (cross-region backups)
+- Secure storage for PII with lifecycle retention
+
+---
+
+## Phase 1 (Completed): Project Bootstrap & Terraform Foundation
+
+This phase sets up the repository structure and Terraform baseline required for the rest of the project.
+
+### ✅ What was implemented
+- Repository skeleton created for a **real-life modular Terraform layout**
+- Documentation structure prepared under `docs/`
+- Terraform environment folder created under `envs/prod/`
+- Terraform backend configured using:
+  - **S3 remote state**
+  - **DynamoDB state locking**
+- AWS providers configured for:
+  - NAS primary region (`us-east-1`)
+  - NAS DR region (`us-west-2`) using a provider alias
+  - N2G Auditing account (separate AWS account) using a provider alias
+
+### ✅ Locked decisions (key project settings)
+- **NAS Account ID:** `436083576844`
+- **N2G Auditing Account ID:** `370445361290`
+- **Primary Region:** `us-east-1`
+- **DR Region:** `us-west-2`
+- **Domain:** `anzyworld.com`
+- **Route 53 Hosted Zone ID:** `Z06049403PYBB5K85PB4V`
+- **Subdomains:**
+  - Dynamic (US only): `app.anzyworld.com`
+  - Static (non-US): `stop.anzyworld.com`
+  - Jenkins: `jenkins.anzyworld.com`
+- **Compute (Dynamic Website):** ECS (Fargate)
+- **Database:** Amazon RDS
+- **Intranet management:** AWS Systems Manager (SSM)
+- **Geo routing (GDPR):** Route 53 Geo Location Routing
+
+---
+
+## Repository Structure
+```bash
+nas-financial-aws-cloud-migration-terraform-jenkins/
+├── modules/ # Reusable Terraform modules (built per component)
+│ ├── iam/
+│ ├── network/
+│ ├── storage/
+│ ├── ecs_dynamic_site/
+│ ├── ecs_intranet/
+│ ├── rds/
+│ ├── static_site/
+│ ├── monitoring/
+│ └── jenkins/
+├── envs/
+│ └── prod/ # Production environment (root Terraform execution directory)
+│ ├── backend.tf
+│ ├── providers.tf
+│ ├── versions.tf
+│ ├── main.tf
+│ ├── variables.tf
+│ └── outputs.tf
+└── docs/
+├── decisions.md # Architecture contract / design decisions
+├── project-roadmap.md # Phased roadmap for implementation
+└── architecture.md # (To be completed) architecture details/diagram
+```
+---
+
+
+---
+
+## Terraform Backend (Remote State)
+
+Terraform state is stored remotely in an S3 bucket with DynamoDB locking to prevent state corruption during concurrent operations.
+
+### Backend resources created (NAS account)
+- **S3 bucket** for Terraform state (remote backend)
+- **DynamoDB table** for Terraform state locking
+
+> These resources are required before running `terraform init`.
+
+---
+
+## AWS CLI Profiles Required
+
+This project uses AWS CLI profiles (best practice) to separate access between accounts.
+
+Expected profiles:
+- `nas-prod`  → NAS account (`436083576844`)
+- `n2g-audit` → N2G Auditing account (`370445361290`)
 
-This roadmap outlines the phased approach used to design and implement a secure, highly available, and compliant AWS cloud architecture for NAS Financial Group.
-The project follows AWS best practices, Infrastructure as Code (Terraform), and CI/CD automation using Jenkins.
+Verify profiles:
+```bash
+aws sts get-caller-identity --profile nas-prod
+aws sts get-caller-identity --profile n2g-audit
+```
+---
 
-Note: This roadmap represents the implementation strategy and may evolve as the project progresses.
+## Running Terraform (Phase 1 Validation)
 
-### Phase 0 – Scope Definition & Assumptions
+All Terraform commands should be run from:
+```bash
+cd envs/prod
+```
+- Validate the setup:
+```bash
+terraform init
+terraform validate
+```
+<img width="1920" height="978" alt="Screenshot (1306)" src="https://github.com/user-attachments/assets/8afb2ed1-c6de-47e7-94bb-facfb819f48e" />
+<img width="1920" height="986" alt="Screenshot (1307)" src="https://github.com/user-attachments/assets/e75614be-a6c7-4415-8cb0-923fd5734d3f" />
 
-- Objective: Establish project boundaries and assumptions before implementation.
+---
+## Next Phase: IAM & Governance (Phase 2)
 
-- Define migration scope from on-premise to AWS
+Next we will implement IAM roles and policies for:
 
-- Select primary region (us-east-1) and secondary region (disaster recovery)
+CloudSpace Engineers: Admin access with explicit billing deny
 
-- Assume centralized identity management via IAM Identity Center (SSO)
+NAS Security Team: Full admin access including billing
 
-- Use IAM roles instead of long-term IAM users
+NAS Operations Team: Admin access restricted to us-east-1 only
 
-- Simulate enterprise multi-team access within a single AWS account
+N2G Auditing: Cross-account role assumption + least privilege
 
-#### Deliverables:
+Well-Architected Tool access for auditors only (no other console permissions)
 
-- Project assumptions documented
+### Step 1 Create IAM module structure
+- inside:
+```bash
+modules/iam/
+```
+- i add:
+```bash
+modules/iam/
+├── roles.tf
+├── policies.tf
+├── trust.tf
+├── outputs.tf
+└── variables.tf
+```
+#### modules/iam Overview:
+File Overview
 
-- Initial README structure
+**variables.tf**
+Declares input variables used by the IAM module, including project naming, AWS account IDs, and trusted principals for role assumption.
 
-### Phase 1 – High-Level Architecture Design
+**roles.tf**
+Creates IAM roles for internal teams and external auditors:
 
-`Objective`: Design the overall system architecture before provisioning resources.
+CloudSpace Engineers (admin access without billing)
 
-- Design public dynamic website architecture
+NAS Security Team (full admin access with billing)
 
-- Design static fallback website for non-US traffic (GDPR)
+NAS Operations Team (admin access restricted to us-east-1)
 
-- Design private intranet application architecture
+N2G Auditing (cross-account auditing role)
 
-- Define traffic flow and security boundaries
+**policies.tf**
+Defines custom IAM policies used to enforce security constraints, such as:
 
-- Identify AWS services required per requirement
+Explicit denial of billing access
 
-#### Deliverables:
+Region-based access restrictions
 
-- High-level architecture diagram
+Minimal read-only permissions for external auditors
 
-- Architecture documentation
-- 
-### Phase 2 – Identity & Access Management (IAM)
+**trust.tf**
+Defines trust relationships (assume role policies) that control who can assume each role, including cross-account trust for the N2G Auditing AWS account.
 
-`Objective`: Implement secure and least-privilege access controls.
+**outputs.tf**
+Exposes the ARNs of all IAM roles created by the module, allowing them to be referenced by other Terraform modules and for testing role assumption.
 
-- Create `IAM roles` for:
+### Step 2 — Start with the simplest role
 
-- CloudSpace Engineers `admin without billing`
+We always begin with:
+👉 CloudSpace Engineers role
 
-- NAS Security Team `full admin with billing` 
+Why?
 
-- NAS Operations Team `region-restricted to us-east-1`
+- No region restrictions yet
 
-- N2G Auditing `cross-account limited access`
+- No cross-account logic
 
-- Define IAM policies using explicit allow/deny rules
+- Lets you learn the pattern
+- AFTER populating the modules/iam/ files, Call the IAM module from envs/prod/main.tf and imput the contain of envs/prod/outputs.tf.
+-  `Run` the following comands from `env/prod`
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
 
-- Implement region-based restrictions using IAM conditions
-
-- Avoid long-term credentials and root account usage
-
-#### Deliverables:
-
-- IAM Terraform module
-
-- IAM access matrix documentation
-
-### Phase 3 – Networking Foundation
-
-- `Objective`: Build a secure and scalable network foundation.
-
-- Create a VPC with appropriate CIDR planning
-
-- Deploy public and private subnets across multiple Availability Zones
-
-- Configure Internet Gateway and NAT Gateway
-
-- Implement route tables and network segmentation
-
-- Apply consistent tagging standards
-
-#### Deliverables:
-
-- Network Terraform module
-
-- Network architecture diagram
-
-### Phase 4 – Public Dynamic Website (Highly Available & Secure)
-
-`Objective`: Deploy a public-facing dynamic application with high availability.
-
-- Deploy Application Load Balancer (HTTPS only)
-
-- Configure Auto Scaling Group across multiple AZs
-
-- Secure traffic using ACM certificates
-
--bIntegrate CloudFront for global distribution
-
-- Enforce PCI compliance via encrypted traffic
-
-- Enable self-healing and automatic scaling
-
-#### Deliverables: 
-- Dynamic website Terraform module
-
-- Security and availability documentation
-
-### Phase 5 – Static Website (GDPR Compliance)
-
-`Objective`: Provide a static fallback site for non-US users.
-
-- Deploy S3 static website
-
-- Integrate CloudFront distribution
-
-- Implement geo-based routing:
-
-- US users → dynamic website
-
-- Non-US users → static website
-
-#### Deliverables:
-
-- Static website Terraform module
-
-- GDPR compliance explanation
-
-### Phase 6 – Private Intranet Application
-
-`Objective`: Deploy a non-public internal application.
-
-- Deploy application servers in private subnets
-
-- Allow outbound internet access via NAT Gateway
-
-- Restrict inbound access to internal users only
-
-- Serve application traffic over HTTP internally
-
-#### Deliverables:
-
--Intranet Terraform module
-
-- Private access documentation
-
-### Phase 7 – External Auditing Access (N2G Auditing)
-
-`Objective`: Enable controlled third-party access for auditing.
-
-- Implement cross-account IAM role access
-
-- Allow HTTP access to intranet web interface
-
-- Grant limited database access
-
-- Restrict access to only required resources
-
-- Provide centralized best-practice review access using AWS Well-Architected Tool
-
-#### Deliverables:
-
-- Auditing access Terraform module
-
-- Cross-account access documentation
-
-### Phase 8 – Secure Storage & Data Lifecycle Management
-
-`Objective`: Secure customer PII data and optimize storage costs.
-
-- Store customer data in encrypted S3 buckets (KMS)
-
-- Implement lifecycle policies:
-
-- Frequent access (0–30 days)
-
-- Archive for 5 years (Glacier / Deep Archive)
-
-- Enforce least-privilege access to storage
-
-#### Deliverables:
-
-- Storage Terraform module
-
-- Data lifecycle documentation
-### Phase 9 – Monitoring, Alerting & Disaster Recovery
-
-`Objective`: Ensure reliability, visibility, and recoverability.
-
-- Implement CloudWatch monitoring and alarms
-
-- Configure Route 53 health checks
-
-- Send alerts via SNS
-
-- Enable cross-region backups for application and database tiers
-
-- Automate snapshot and backup policies
-
-#### Deliverables:
-
-- Monitoring Terraform module
-
-- Disaster recovery strategy documentation
-
-### Phase 10 – CI/CD Automation with Jenkins
-
-`Objective`: Automate infrastructure deployment and validation.
-
-- Implement Jenkins pipeline stages:
-
-`Terraform formatting and validation`
-
-`Terraform plan`
-
-- Manual approval
-
-`Terraform apply`
-
-- Store Terraform state securely
-
-- Enable repeatable and auditable deployments
-
-#### Deliverables:
-
-- Jenkinsfile
-
-- CI/CD pipeline documentation
-
-### Phase 11 – Documentation & Finalization
-
-Objective: Prepare the project for presentation and review.
-
-Finalize project README
-
-Document architecture decisions and trade-offs
-
-Add diagrams and usage instructions
-
-Summarize lessons learned and future improvements
-
-### Deliverables:
-
-- Final README
-
-- Architecture diagrams
-
-- Project summary
-
- ### Final Outcome
-
-- By following this roadmap, the project delivers:
-
-- Enterprise-grade AWS architecture
-
-- Secure and compliant cloud design
-
-- Infrastructure as Code using Terraform
-
-- CI/CD automation with Jenkins
-
-- Interview-ready documentation and design rationale.
