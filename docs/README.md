@@ -1,4 +1,4 @@
-# NAS Financial AWS Cloud Migration (Terraform + Jenkins)
+<img width="1920" height="985" alt="Screenshot (1331)" src="https://github.com/user-attachments/assets/ed7c40cd-b034-493f-bda3-2fe8bd2b34a3" /># NAS Financial AWS Cloud Migration (Terraform + Jenkins)
 
 This repository contains an enterprise-style AWS cloud architecture project for **NAS Financial Group**, designed and implemented using **Terraform (Infrastructure as Code)** and a **Jenkins CI/CD pipeline**.
 
@@ -349,7 +349,8 @@ App security group
 
 DB security group (locked to app only)
 ####  Step 1 — Prepare the network module
-- populate the :
+ populate the :
+ ```bash
 modules/network/
 ├── vpc.tf
 ├── subnets.tf
@@ -357,6 +358,84 @@ modules/network/
 ├── security_groups.tf
 ├── variables.tf
 └── outputs.tf
+```
+
+##### sumary contents for the modules/network/ files
+
+**variables.tf**
+
+Defines the inputs the network module needs:
+
+Project/env naming (project, env)
+
+VPC CIDR block (10.0.0.0/16)
+
+Two Availability Zones list (azs)
+
+Common tags map (tags)
+
+**vpc.tf**
+
+Creates the core networking boundary:
+
+VPC with DNS support + hostnames enabled (needed for ALB/ECS/service discovery)
+
+Internet Gateway (IGW) attached to the VPC (public internet access for public subnets)
+
+**subnets.tf**
+
+Creates subnets across 2 AZs:
+
+2 `Public subnets`
+
+Auto-assign public IPs enabled
+
+Intended for ALBs + NAT Gateway
+
+2 `Private subnets`
+
+No public IPs
+
+Intended for ECS tasks, intranet, and RDS
+
+CIDRs are derived automatically from the VPC CIDR using cidrsubnet().
+
+**routes.tf**
+- Creates outbound/internet routing and NAT:
+- Elastic IP for the NAT Gateway
+1 `NAT Gateway` placed in the first public subnet (cost-optimized)
+- Public route table:
+-Default route 0.0.0.0/0 → IGW
+-Associated to both public subnets
+-Private route table:
+-Default route 0.0.0.0/0 → NAT Gateway
+-Associated to both private subnets
+`This enables`:
+- `Public subnets`: inbound/outbound internet
+- `Private subnets`: outbound-only internet (updates, package installs)
+
+**security_groups.tf`**
+- Creates baseline security groups (SGs) for later phases:
+- Public ALB SG
+- Allows inbound 443 from internet (and 80 optionally for redirect)
+- Allows all outbound
+- Dynamic App SG (ECS Tasks)
+- Allows inbound HTTP 80 ONLY from the public ALB SG
+- Allows all outbound
+
+**DB SG (RDS)**
+- Allows inbound MySQL 3306 ONLY from the App SG
+- Allows all outbound (normal for managed RDS)
+- Internal ALB SG (Intranet)
+- Allows inbound HTTP 80 ONLY from within the VPC CIDR
+- Allows all outbound
+
+**outputs.tf**
+- Exports key IDs so other modules can plug in easily:
+- vpc_id
+- public_subnet_ids
+- private_subnet_ids
+- Security group IDs (public ALB, app, DB, internal ALB)
 #### Step 2 — Call the module from envs/prod/main.tf
 ```bash
 module "network" {
@@ -372,6 +451,102 @@ terraform fmt -recursive
 terraform validate
 terraform plan
 ```
-<img width="1920" height="963" alt="Screenshot (1319)" src="https://github.com/user-attachments/assets/3c97d8df-5899-40cb-92fe-774bb312a039" />
-<img width="1920" height="978" alt="Screenshot (1320)" src="https://github.com/user-attachments/assets/10b9ef7e-3b7e-4c16-b285-d18a3c9cdaa5" />
+<img width="1920" height="978" alt="Screenshot (1320)" src="https://github.com/user-attachments/assets/8cf28f36-00ee-45bf-8897-9b2d0a78b126" />
+**terraform apply**
+<img width="1920" height="949" alt="Screenshot (1322)" src="https://github.com/user-attachments/assets/6466288c-6d7c-4bea-87d8-097a8683e362" />
+
+**After apply** (fast verification checklist)
+
+**In AWS Console**, confirm:
+- VPC exists
+- 2 public + 2 private subnets
+- IGW attached to VPC
+- NAT Gateway is Available
+- Route tables:
+- Public → IGW
+- Private → NAT
+ <img width="1920" height="994" alt="Screenshot (1324)" src="https://github.com/user-attachments/assets/fb39b55f-69c4-4fee-b131-7940d30224d8" />
+  `Security geoups`
+ - sg-alb-public
+- sg-app-dynamic
+- sg-db
+- sg-alb-internal
+
+<img width="1920" height="981" alt="Screenshot (1325)" src="https://github.com/user-attachments/assets/e0fcd725-7376-496c-85dc-20dd7bfdb381" />
+  Elastic IP
+<img width="1920" height="977" alt="Screenshot (1326)" src="https://github.com/user-attachments/assets/4cfc2eda-6a6c-444b-b652-ed5acf46e9b5" />
+
+## Phase 4: ECS Dynamic Website (US Only)
+
+- Now we build the dynamic site backbone:
+
+ **What Phase 4 will create**
+- ECS Cluster (Fargate)
+- ECS Task Definition (sample web app)
+-  ECS Service running across private subnets
+-  Public ALB in public subnets
+-  Target Group + Listener (HTTP now, HTTPS in next step)
+-  CloudWatch log group for containers
+
+Note: I’ll do HTTPS (ACM cert) as the next sub-step once ALB is working, because ACM + DNS validation is smoother when the ALB exists.
+
+- Populate the files that would deliver the above resources.
+```bash
+modules/ecs_dynamic_site/
+├── variables.tf        # Input variables for the ECS dynamic website (VPC, subnets, security groups, app sizing)
+├── ecs.tf              # ECS cluster creation and CloudWatch log group for the dynamic application
+├── iam.tf              # IAM task execution role for ECS (pull images, write logs to CloudWatch)
+├── alb.tf              # Public Application Load Balancer, target group, and HTTP listener
+├── task.tf             # ECS Fargate task definition using nginxdemos/hello container
+├── service.tf          # ECS service running tasks in private subnets and attached to the ALB
+└── outputs.tf          # Exports ALB DNS name, target group ARN, and ECS cluster name
+```
+ **OR**
+ - `variables.tf` → “Configuration surface”
+- `ecs.tf` → “Compute orchestration”
+- `iam.tf` → “Service-level security”
+- `alb.tf` → “Traffic ingress & health checks”
+`task.tf` → “Application runtime definition”
+`service.tf` → “High availability & scaling”
+`outputs.tf` → “Inter-module integration”
+This structure is exactly how production Terraform repos are organized.
+#### Run commands (from envs/prod)
+- Because you added a new module:
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="973" alt="Screenshot (1328)" src="https://github.com/user-attachments/assets/f5851434-2d16-470c-ad77-4a8be2e9e109" />
+<img width="1920" height="966" alt="Screenshot (1329)" src="https://github.com/user-attachments/assets/2a0a0cd5-ecb3-46f1-9400-08ba79f2eb3e" />
+**terraform apply**
+<img width="1920" height="955" alt="Screenshot (1330)" src="https://github.com/user-attachments/assets/2e25be80-d585-43b4-ba9a-90c200fe5aa1" />
+- Get the `dynamic_alb_dns_name`
+```bash
+terraform output dynamic_alb_dns_name
+```
+- check it on the website
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/efd44410-bd58-49cc-8a5e-c57b8abe36f1" />
+**console checks:**
+- `ECS service` → 2 RUNNING tasks
+-`Load Balancer` `Target group` → healthy
+- CloudWatch logs` → streaming
+<img width="1920" height="970" alt="Screenshot (1332)" src="https://github.com/user-attachments/assets/a2dee705-35af-45d7-81de-d9de86ff2096" />
+<img width="1920" height="980" alt="Screenshot (1333)" src="https://github.com/user-attachments/assets/90e1346c-fa79-43b0-87e4-f9f1330e3ad1" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/765ff83d-e2c7-4a97-8db8-a99f6102b934" />
+<img width="1920" height="834" alt="Screenshot (1334)" src="https://github.com/user-attachments/assets/6e428873-d6b3-4980-a88f-384c9d36cf47" />
+
+## Phase 4.1: PCI/GDPR foundation
+- Next i should secure and name the dynamic app properly:
+- **implement**:
+- `ACM certificate` for app.anzyworld.com
+- HTTPS listener (443) on the ALB
+- Redirect HTTP (80) → HTTPS (443)
+- Route 53 alias record:
+- app.anzyworld.com → ALB
+**This is key for PCI compliance (encrypted traffic)**.
+
+
+
 
