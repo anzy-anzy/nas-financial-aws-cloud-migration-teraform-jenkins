@@ -1,4 +1,4 @@
-<img width="1920" height="985" alt="Screenshot (1331)" src="https://github.com/user-attachments/assets/ed7c40cd-b034-493f-bda3-2fe8bd2b34a3" /># NAS Financial AWS Cloud Migration (Terraform + Jenkins)
+# NAS Financial AWS Cloud Migration (Terraform + Jenkins)
 
 This repository contains an enterprise-style AWS cloud architecture project for **NAS Financial Group**, designed and implemented using **Terraform (Infrastructure as Code)** and a **Jenkins CI/CD pipeline**.
 
@@ -547,6 +547,90 @@ terraform output dynamic_alb_dns_name
 - app.anzyworld.com → ALB
 **This is key for PCI compliance (encrypted traffic)**.
 
+#### Sumary for the changes we will make to achieve 
 
+```bash
+Users → Route 53 (app.anzyworld.com)
+      → ALB (HTTP:80 redirects → HTTPS:443)
+      → ALB (HTTPS:443) → ECS (private subnets)
+```
 
+`modules/ecs_dynamic_site/variables.tf`
+
+ Added variables needed for TLS + DNS:
+ 
+- `route53_zone_id` (Hosted Zone ID)
+- `dynamic_fqdn` (app.anzyworld.com)
+- `ssl_policy` (TLS security policy)
+
+`modules/ecs_dynamic_site/tls.tf (new file)`
+
+Creates and validates the ACM certificate:
+
+- Requests cert for app.anzyworld.com
+- Generates Route 53 validation records automatically
+- Completes certificate validation (becomes “Issued”)
+
+`modules/ecs_dynamic_site/route53.tf (new file)`
+
+Creates Route 53 DNS record:
+
+`app.anzyworld.com` becomes an **Alias A** record pointing to the ALB 
+
+-`modules/ecs_dynamic_site/alb.tf`
+
+`Modified listener behavior:`
+
+- Old: HTTP :80 → forward to target group
+- New:
+ - HTTP :80 → redirect to HTTPS :443
+ - HTTPS :443 → forward to target group
+
+✅ Enforces encrypted traffic (PCI)
+
+`modules/ecs_dynamic_site/service.tf`
+
+Updated dependency:
+
+-Service now depends on HTTPS listener, so Terraform creates things in the correct order.
+
+`envs/prod/main.tf`
+-` Updated ECS` module call to pass:
+- `route53_zone_id` = var.route53_zone_id
+- `dynamic_fqdn` = var.dynamic_fqdn
+
+So the module can create the certificate + DNS.
+#### Commands to run now (from envs/prod)
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+```
+<img width="1920" height="998" alt="Screenshot (1338)" src="https://github.com/user-attachments/assets/27f41b85-1537-438a-9ed5-7f0ddf8f016c" />
+
+**What this plan will do**
+
+`Plan: 5 to add, 1 to change, 0 to destroy. ✅ Safe.`
+
+```bash
+Create an ACM certificate for app.anzyworld.com
+Create the Route 53 DNS validation record for the certificate
+Create the Route 53 alias record app.anzyworld.com → your ALB
+Create the HTTPS listener on the ALB (port 443) using the certificate
+Create the ACM certificate validation resource
+Update in-place your existing HTTP listener (port 80) to redirect to HTTPS
+```
+`That’s exactly the PCI step`.
+
+- Apply now
+<img width="1920" height="981" alt="Screenshot (1339)" src="https://github.com/user-attachments/assets/9629d6a2-4d3e-4e49-b20a-e467bed7e030" />
+
+**After apply, test:**
+
+- http://app.anzyworld.com → should redirect to HTTPS
+
+- https://app.anzyworld.com → should load the nginx demo page
+
+<img width="1920" height="1013" alt="Screenshot (1340)" src="https://github.com/user-attachments/assets/c316e648-09a9-4f22-bbae-4e032f35a97d" />
 
