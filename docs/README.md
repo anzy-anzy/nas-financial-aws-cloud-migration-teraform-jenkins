@@ -124,7 +124,7 @@ terraform validate
 ---
 ## Next Phase: IAM & Governance (Phase 2)
 
-Next we will implement IAM roles and policies for:
+Next i will implement IAM roles and policies for:
 
 CloudSpace Engineers: Admin access with explicit billing deny
 
@@ -197,7 +197,181 @@ Why?
 - AFTER populating the modules/iam/ files, Call the IAM module from envs/prod/main.tf and imput the contain of envs/prod/outputs.tf.
 -  `Run` the following comands from `env/prod`
 ```bash
+terrafor init # for the second time 
 terraform fmt -recursive
 terraform validate
 terraform plan
+``` 
+
+<img width="1920" height="978" alt="Screenshot (1310)" src="https://github.com/user-attachments/assets/997dbdf0-5f78-4d7b-aee4-8abbb5faecb0" />
+<img width="1920" height="982" alt="Screenshot (1311)" src="https://github.com/user-attachments/assets/d71696fc-9f1a-4a0e-8ce0-474b5a99dc7e" />
+
+```bash
+terraform apply
+```
+<img width="1920" height="988" alt="Screenshot (1312)" src="https://github.com/user-attachments/assets/b6ff6cc8-ef09-42c8-8790-64f9d0cf8936" />
+#### After terraform apply, AWS will have:
+🔐 IAM Roles (4)
+
+1) **CloudSpace Engineers Role**
+
+Admin access
+
+❌ Billing explicitly denied
+
+2) **NAS Security Team Role**
+
+Full admin access
+
+✅ Billing included
+
+2) **NAS Operations Team Role**
+
+Admin access
+
+🚫 Restricted to us-east-1 only
+
+4) **N2G Auditing Role**
+
+Lives in NAS account
+
+Can be assumed from N2G account
+
+Minimal read-only audit permissions (for now)
+
+#### IAM Policies (3 custom)
+
+Deny Billing Policy
+
+Deny Non–us-east-1 Policy
+
+N2G Minimal Read-Only Policy
+
+#### Policy Attachments
+
+Policies attached to the correct roles
+
+AWS-managed AdministratorAccess attached where appropriate
+
+#### Terraform Outputs
+
+**After apply**, Terraform will output:
+
+Role `ARNs` for all 4 roles
+
+These ARNs are important for:
+
+Testing sts:**AssumeRole**
+
+Later wiring `Jenkins`, `ECS tasks`, and `auditors`
+
+<img width="1920" height="990" alt="Screenshot (1313)" src="https://github.com/user-attachments/assets/d9ddb5ec-6bdd-40a0-b20a-fd92e1f6b6a2" />
+
+#### ✅ IAM Role Validation & Security Testing
+Region Restriction Enforcement Test (NAS Operations Team)
+
+To validate that IAM policies are correctly enforcing region-based **access control**, a manual sanity test was performed using AWS STS role assumption.
+
+**Test Objective**
+
+Verify that the `NAS Operations Team role`:
+
+✅ Can perform actions in the allowed **region** (us-east-1)
+
+❌ Is explicitly denied **actions** in any other region
+
+**Test Method**
+
+Assumed the NASOperationsTeamRole using AWS STS:
+```bash
+aws sts assume-role \
+  --role-arn arn:aws:iam::<NAS_ACCOUNT_ID>:role/nas-financial-prod-NASOperationsTeamRole \
+  --role-session-name ops-test
+```
+<img width="1920" height="974" alt="Screenshot (1314)" src="https://github.com/user-attachments/assets/c88090e4-9a4c-4340-b20c-97151b1daa53" />
+**Exported** the temporary credentials returned by STS.
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...
+```
+<img width="1920" height="998" alt="Screenshot (1316)" src="https://github.com/user-attachments/assets/a3f87374-8523-4014-98fd-f55ddd91f22d" />
+
+**Check** IF the NAS account terminal is in the operation team with the role that has **Admin access** and **Restricted to us-east-1 only**
+<img width="1920" height="980" alt="Screenshot (1318)" src="https://github.com/user-attachments/assets/5f210a1b-7f1d-4855-bcbc-89b7c5d0c391" />
+So am done testing i can now **reset my terminal**
+```bash
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+## Phase 3 — Networking (VPC)
+What i will be building in Phase 3
+1) **VPC**
+
+- Single VPC in us-east-1
+
+- Proper CIDR planning
+
+ 2) **Subnets** (Multi-AZ)
+
+- Public subnets (2 AZs):
+
+- Public ALB (dynamic site)
+
+- Jenkins ALB
+
+- NAT Gateway
+
+**Private subnets** (2 AZs):
+
+- ECS (dynamic app)
+
+- ECS / EC2 (intranet)
+
+- RDS
+
+3) **Internet Access**
+
+- Internet Gateway (IGW)
+
+- NAT Gateway (for private outbound access)
+
+4) **Routing**
+
+Public route table → IGW
+
+Private route table → NAT Gateway
+
+5) **Baseline Security Groups**
+
+ALB security group
+
+App security group
+
+DB security group (locked to app only)
+####  Step 1 — Prepare the network module
+- populate the :
+modules/network/
+├── vpc.tf
+├── subnets.tf
+├── routes.tf
+├── security_groups.tf
+├── variables.tf
+└── outputs.tf
+#### Step 2 — Call the module from envs/prod/main.tf
+```bash
+module "network" {
+  source = "../../modules/network"
+```
+#### step 3 Run the commands (from envs/prod)
+
+Because you added a new module:
+
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="963" alt="Screenshot (1319)" src="https://github.com/user-attachments/assets/3c97d8df-5899-40cb-92fe-774bb312a039" />
+<img width="1920" height="978" alt="Screenshot (1320)" src="https://github.com/user-attachments/assets/10b9ef7e-3b7e-4c16-b285-d18a3c9cdaa5" />
 
