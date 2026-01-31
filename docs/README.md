@@ -634,3 +634,267 @@ Update in-place your existing HTTP listener (port 80) to redirect to HTTPS
 
 <img width="1920" height="1013" alt="Screenshot (1340)" src="https://github.com/user-attachments/assets/c316e648-09a9-4f22-bbae-4e032f35a97d" />
 
+## Phase 5 — Database (RDS) + Secrets Manager + BackupsDatabase (RDS)
+
+**Engine: MySQL**
+- Instance: `db.t3.micro` (project-friendly, still realistic)
+- High Availability: `Multi-AZ` = YES ✅
+- `Backups: Enabled` (automated)
+- DR: Snapshot copy to secondary region (us-west-2)
+**Secrets**
+- AWS `Secrets Manager` for DB credentials (no plaintext in Terraform) ✅
+- Auto-generated strong password
+**Monitoring & Alerts**
+- CloudWatch `Alarms` (ALB 5xx, ECS task health, RDS health)
+- SNS Topic for alerts
+- Notification email: `anselmebsiy58@gmail.com`
+I'll receive a `confirmation email` from AWS — you must click Confirm subscription once it arrives.
+**Security**
+- RDS in private subnets only
+- DB SG allows only from app SG
+- No public DB access
+- IAM least privilege maintained
+#### Files i will add
+```bash
+modules/rds/
+├── variables.tf        # DB inputs (engine, size, AZs, tags)
+├── secrets.tf          # Secrets Manager (credentials)
+├── subnet_group.tf     # Private subnet group
+├── rds.tf              # RDS instance (Multi-AZ)
+├── backups.tf          # Snapshot & cross-region copy
+├── alarms.tf           # CloudWatch alarms
+└── outputs.tf          # Endpoint, secret ARN
+Wire the module into envs/prod/main.tf
+```
+#### Run commands
+- From `envs/prod`
+
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="986" alt="Screenshot (1341)" src="https://github.com/user-attachments/assets/b4150e1b-139e-4ede-aab7-fbbfbbd8f3c0" />
+#### What this plan is about to do (clean summary)
+**Network**
+- 1 `in-place update`
+ - NAT Gateway gets a regional_nat_gateway_address
+ - This is harmless and expected (provider version upgrade side effect)
+ **RDS (Core of Phase 5)**
+- Terraform will create:
+**Databas**
+ - MySQL RDS
+ - db.t3.micro (project-friendly)
+ - Multi-AZ = true 
+ - Private (not publicly accessible) 
+ - Encrypted at rest (KMS-managed) 
+ - Security Group locked to app tier only 
+
+**Credentials**
+ - Random password generated
+ - Stored securely in AWS Secrets Manager
+- No plaintext password in Terraform state or code
+
+**Backup & Disaster Recovery (Very strong design)**
+- AWS Backup Vault (Primary – us-east-1)
+- AWS Backup Vault (DR – us-west-2)
+- Daily backups
+- Lifecycle rules:
+- Hot retention (~30–35 days)
+- Archive up to 5 years (1825 days) ✅
+- Cross-region copy enabled (meets DR requirement)
+`This perfectly matches the project brief`.
+
+**Monitoring & Alerts**
+- `CloudWatch` alarms:
+- High CPU
+- Low free storage
+- SNS Topic created
+- Email subscription:
+⚠️ i will receive a confirmation email after apply
+and i will  click “Confirm subscription”, otherwise alerts won’t deliver.
+
+**Outputs (important for next phases)**
+ **Terraform will expose:**
+- rds_endpoint → used by ECS app later
+- rds_secret_arn → used by ECS task role
+- alerts_topic_arn → reusable for other alarms
+- These outputs are exactly what we need next.
+- About the provider warning (final word)
+
+  ```bash
+  terraform apply
+  ```
+<img width="1920" height="990" alt="Screenshot (1345)" src="https://github.com/user-attachments/assets/d3abf347-a11b-4087-8808-42a4776759c5" />
+
+  #### Post-Apply Verification Checklist
+1) Confirm SNS email subscription (MOST IMPORTANT)
+
+- Checked my inbox for an AWS email like “AWS Notification - Subscription Confirmation”. and confirm it.
+<img width="1920" height="998" alt="Screenshot (1344)" src="https://github.com/user-attachments/assets/5174e7e8-c539-4050-9fe1-9ef20556366c" />
+2) Terraform outputs (copy these)
+
+- From envs/prod run:
+```bash
+terraform output
+```
+3) RDS Console checks (primary region us-east-1
+```bash
+Status: Available
+Multi-AZ: Yes
+Publicly accessible: No
+Storage encrypted: Yes
+VPC security group: should be your ...sg-db
+```
+<img width="1920" height="990" alt="Screenshot (1345)" src="https://github.com/user-attachments/assets/3f796ae7-d90b-42cd-9286-554adc9bd5a1" />
+
+4) Secrets Manager checks
+5) AWS Backup checks (this proves DR requirement)
+
+**In us-east-1**
+**Console → AWS Backup**
+- Backup vault exists: nas-financial-prod-backup-vault-primary
+- Backup plan exists: nas-financial-prod-backup-plan
+- Resource assignment includes your RDS instance
+ 
+**In us-west-2**
+**Switch region to us-west-2:**
+- Vault exists: nas-financial-prod-backup-vault-dr
+- (First actual recovery point may show up after the first scheduled run.)
+<img width="1920" height="954" alt="Screenshot (1347)" src="https://github.com/user-attachments/assets/8e82bda4-fa97-448a-b788-89bd882b443a" />
+<img width="1920" height="960" alt="Screenshot (1348)" src="https://github.com/user-attachments/assets/f5e58b62-d577-416f-98ab-01690eb313af" />
+
+**Quick CLI verification** (optional but strong)
+- Check DB is NOT public
+- Check Multi-AZ
+<img width="1920" height="999" alt="Screenshot (1349)" src="https://github.com/user-attachments/assets/739266b3-78ef-409e-ae6d-99e7621b9fb4" />
+
+## Phase 6A – Secure ECS ↔ RDS Integration (Secrets & IAM)
+- In this phase, the dynamic ECS application is securely prepared to connect to the private RDS database without exposing credentials or opening network access.
+**What was implemented**
+  
+##### Dedicated ECS Task IAM Role
+- Created a task role separate from the execution role.
+- Follows least-privilege principles.
+- Used only by the running application containers.
+- 
+**Secrets Manager Integration**
+- Database credentials are stored in AWS Secrets Manager.
+- ECS tasks are granted permission to read only the specific RDS secret.
+- No database credentials are hardcoded in Terraform, GitHub, or ECS task definitions.
+- 
+**Secure Secret Injection**
+- Database username and password are injected into the container at runtime using ECS secrets.
+- Credentials never appear in plaintext in logs or configuration files.
+- 
+**Database Connection Metadata**
+- RDS endpoint and database name are injected as environment variables.
+- The application can connect to the database without needing public access.
+- 
+**No Public Exposure**
+- RDS remains in private subnets.
+- No inbound internet access to the database.
+- Only ECS tasks within the VPC can reach the database.
+- 
+**Why this matters**
+- Meets security best practices for cloud-native applications.
+- Aligns with PCI and compliance requirements by preventing credential exposure.
+- Enables future application upgrades without infrastructure redesign.
+- Provides a clean foundation for adding real database-backed applications.
+
+**Current State**
+- The application container does not yet use the database.
+- This phase focuses on secure plumbing and access control.
+- A future phase will replace the demo container with a real application that actively connects to MySQL.
+
+##### Phase 6A – Secure ECS to RDS Wiring
+- In this phase, the ECS service was securely prepared to access the private RDS database without exposing credentials.
+**What changed**
+-Added a dedicated ECS task IAM role (separate from the execution role).
+- Granted the task role least-privilege access to read the RDS credentials from AWS Secrets Manager.
+- Injected database credentials into the container at runtime using ECS secrets.
+- Passed the RDS endpoint and database name as environment variables.
+- Wired ECS and RDS modules together in the production environment.
+- 
+**Result**
+- Database credentials are never stored in code or Terraform state.
+- RDS remains private and accessible only from ECS tasks.
+- The infrastructure is ready for a real database-backed application in the next phase.
+
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="989" alt="Screenshot (1350)" src="https://github.com/user-attachments/assets/4b2374e6-4035-4dd8-8fe6-9b6a335e09ba" />
+
+```
+terraform apply
+```
+<img width="1920" height="970" alt="Screenshot (1351)" src="https://github.com/user-attachments/assets/044f3569-b1ed-472b-bcf3-2b71e069cc4d" />
+
+### Phase 6A Post-Apply Checklist
+1) ECS Service health (must still be stable)
+- `Check`:
+
+- Desired tasks = 2
+- Running tasks = 2
+- No constant “stopping/starting” in Events
+ 
+2) Task Definition has the new role + secrets
+- Task role ARN is set (not empty)
+
+<img width="1920" height="953" alt="Screenshot (1356)" src="https://github.com/user-attachments/assets/904f193d-7eaa-4a10-8d2d-9c8c91786705" />
+
+**Under container dynamic-app**:
+- Environment variables:
+- DB_HOST
+-DB_NAME
+
+**Secrets**:
+- DB_USER
+- DB_PASSWORD
+- This proves the wiring is in place.
+
+3) Secrets Manager permission is correct (IAM)
+- Confirm it has an attached policy allowing:
+```bash
+secretsmanager:GetSecretValue
+secretsmanager:DescribeSecret
+Resource = your exact secret ARN
+...:secret:nas-financial/prod/rds/mysql/credentials-...
+```
+**Least privilege**.
+
+<img width="1920" height="966" alt="Screenshot (1354)" src="https://github.com/user-attachments/assets/acb98804-c7e4-4cb7-9f5b-c488260122de" />
+
+4) CloudWatch logs (look for secret injection errors)
+- Console → CloudWatch → Log groups → /ecs/nas-financial-prod-dynamic → newest stream
+###### We’re checking for errors like:
+- AccessDenied to Secrets Manager
+- “Unable to fetch secret”
+- Task failing to start
+Even though nginx doesn’t use DB, ECS still must successfully inject secrets.
+
+5) Website still works
+**Open**:
+
+`https://app.anzyworld.com`
+
+Should still show the nginx demo page
+
+## Phase 7 goal (in your project words)
+- Build a dynamic internal application that is not publicly accessible
+- Server can still download packages from the internet (NAT gateway)
+- Employees access it through HTTP (internal only)
+- Management access only via SSM Session Manager (no SSH)
+
+**Phase 7 deliverables** (what we’ll create)
+-Internal ALB (private) OR no ALB + direct internal access (we’ll choose the cleanest)
+-ECS service or EC2 for intranet (we’ll use the simplest solid option)
+-Security groups locked to:
+-Only allow HTTP from internal sources (VPC or corporate CIDR)
+-SSM permissions for CloudSpace engineers
+-No public IPs, no inbound from the internet
