@@ -1016,4 +1016,30 @@ aws ssm start-session `
 <img width="1920" height="950" alt="Screenshot (1369)" src="https://github.com/user-attachments/assets/554ebc14-c204-4630-8069-1c6fe470a9eb" />
 <img width="1920" height="991" alt="Screenshot (1371)" src="https://github.com/user-attachments/assets/8d146b5d-1fd5-484e-8b04-fce74fc4abd6" />
 
+##### Finishing touches for phase 7 b
+1) Create a private hosted zone for `anzyworld.com`
+- It will create:
+- `aws_route53_zone.private_anzyworld`
+- Name: `anzyworld.com`
+- Attached to your VPC: `vpc-0e370df2df452f1a7`
 
+This means DNS records inside this zone only work for clients inside the VPC (VPN/Client VPN/Direct Connect/EC2/SSM port-forward use case).
+
+2)  Move intranet.anzyworld.com into the Private Hosted Zone
+- Terraform shows:
+- `module.intranet_app.aws_route53_record.intranet must be replaced`
+
+**That’s normal because**:
+
+- The old record is currently in your public hosted zone (Z060494...)
+- After this change, it will be recreated in the private zone (new zone_id)
+
+So it will:
+
+- destroy the public-zone intranet record
+- create a private-zone intranet record
+- That’s exactly what we want for an intranet.
+
+<img width="1920" height="997" alt="Screenshot (1377)" src="https://github.com/user-attachments/assets/324fc940-bb9f-428f-8ed5-4c143bb5e77b" />
+- `intranet.anzy.world Will no longer exist as a public but in the private hosted zone so its vpc scoped and do not resolve on the public internet
+<img width="1920" height="616" alt="Screenshot (1378)" src="https://github.com/user-attachments/assets/4ee291d5-feea-4e08-9438-cd20d7b2a8a7" />
