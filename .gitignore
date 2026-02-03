@@ -1,0 +1,16 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Local overrides
+*.tfvars
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Installers / binaries
+*.exe
