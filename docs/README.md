@@ -885,16 +885,135 @@ Even though nginx doesn’t use DB, ECS still must successfully inject secrets.
 
 Should still show the nginx demo page
 
-## Phase 7 goal (in your project words)
+---
+
+## Phase 7A Plan (What we will create)
+A) Static site (`stop.anzyworld.com`)
+
+**I will create**:
+- S3 bucket (private)
+- CloudFront distribution (HTTPS)
+- ACM certificate for stop.anzyworld.com (must be in us-east-1)
+- Route 53 alias record: stop.anzyworld.com → CloudFront
+- Upload a simple index.html that shows the GDPR message
+
+B) Geo-routing entrypoint (`nas.anzyworld.com`)
+- We will create:
+- Route 53 record for www.anzyworld.com
+- Geolocation: US → ALB (dynamic)
+Default → CloudFront (static)
+
+**the following modules be created**
+```bash
+modules/static_site/
+├── main.tf
+├── variables.tf
+└── outputs.tf
+```
+##### Updated / Added for Phase 7A (Static + Geo Routing)
+`envs/prod/providers.tf`
+- Added aws.`us_east_1` alias for ACM certs used by CloudFront.
+
+`modules/static_site/*` (new module)
+- Creates an S3 private bucket with an “Access Restricted” HTML page.
+- Creates CloudFront with OAC (secure S3 access).
+- Creates ACM cert for stop.anzyworld.com and validates via Route 53.
+- Creates Route 53 record for stop.anzyworld.com → CloudFront.
+
+`envs/prod/main.tf` (will be updated)
+- Adds the static_site module.
+- Adds Route 53 Geolocation routing for `nas.anzyworld.com`:
+  -US → Dynamic ALB (ECS)
+ - Default (non-US) → Static CloudFront
+
+`modules/ecs_dynamic_site/outputs.tf` (only if missing)
+- Exposes ALB dns_name + zone_id so Route 53 geolocation alias can point to it.
+#### Run commands from envs/prod
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="986" alt="Screenshot (1358)" src="https://github.com/user-attachments/assets/004d8ad4-547a-435b-b3cf-3d527129e52c" />
+```bash
+terraform apply
+```
+-**Got mix up here and alot of troubleshooting here but all good now**
+so i now have `nas.anzyworld.com` that would onlu deliver it content to those to the US and shows "  Restricted Access" to anyone else.
+
+<img width="1920" height="997" alt="Screenshot (1364)" src="https://github.com/user-attachments/assets/0aa53c46-7973-49ea-b700-21950e922d0b" />
+## Phase 7B goal
 - Build a dynamic internal application that is not publicly accessible
 - Server can still download packages from the internet (NAT gateway)
 - Employees access it through HTTP (internal only)
 - Management access only via SSM Session Manager (no SSH)
+- 
+  **Phase 7 deliverables** (what i’ll create)
+- Internal ALB (private) OR no ALB + direct internal access (we’ll choose the cleanest)
+- ECS service or EC2 for intranet (we’ll use the simplest solid option)
+- `Security groups locked to`:
+- Only allow HTTP from internal sources (VPC or corporate CIDR)
+- SSM permissions for CloudSpace engineers
+- No public IPs, no inbound from the internet
+#### What changes in Terraform at this stage
+- create a new module, not touch the public site.
 
-**Phase 7 deliverables** (what we’ll create)
--Internal ALB (private) OR no ALB + direct internal access (we’ll choose the cleanest)
--ECS service or EC2 for intranet (we’ll use the simplest solid option)
--Security groups locked to:
--Only allow HTTP from internal sources (VPC or corporate CIDR)
--SSM permissions for CloudSpace engineers
--No public IPs, no inbound from the internet
+**New module**
+
+```bash
+modules/
+└── ecs_intranet/
+    ├── alb.tf          # Internal ALB (no public IPs)
+    ├── ecs.tf          # ECS cluster/service (or reuse cluster)
+    ├── task.tf         # Task definition (simple demo app)
+    ├── iam.tf          # ECS task roles
+    ├── security.tf     # Strict SG rules
+    ├── variables.tf
+    ├── outputs.tf
+```
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+
+**Terraform Plan sumary**
+- Security Group (HTTP only from `10.0.0.0/16`)
+- IAM Role for EC2 to use SSM (`AmazonSSMManagedInstanceCore`)
+- IAM Instance Profile
+- Private EC2 Instance in private subnet (`no public IP`)
+- Route53 Record `intranet.anzyworld.com` (private/internal style access)
+- Supporting attachments/policies
+
+```bash
+terraform apply
+```
+<img width="1920" height="990" alt="Screenshot (1366)" src="https://github.com/user-attachments/assets/f9b82cb1-d1d9-4def-849f-daa317b05a8a" />
+
+**What Terraform applied (terraform apply)**
+- Terraform actually created the intranet stack and installed Apache using user_data:
+-  SSM agent is running
+- IAM permissions are correct
+- instance can reach SSM endpoints (via NAT/VPC routing)
+  - Open a new terminal **Powershell** and install `session manager`
+```bash
+curl https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe
+dir .\SessionManagerPluginSetup.exe # if it dosen't work,i:
+Invoke-WebRequest `
+-Uri "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe" `
+-OutFile ".\SessionManagerPluginSetup.exe"
+session-manager-plugin # it will show version
+aws ssm start-session `
+  --target i-0d74093b66aec5997 `
+  --document-name AWS-StartPortForwardingSession `
+  --parameters "portNumber=80,localPortNumber=8080" # starting your session
+```
+<img width="1920" height="974" alt="Screenshot (1368)" src="https://github.com/user-attachments/assets/003361fa-b2f3-47a4-bddc-72463e0339a8" />
+
+- Open Browser
+`http://localhost:8080`
+<img width="1920" height="950" alt="Screenshot (1369)" src="https://github.com/user-attachments/assets/554ebc14-c204-4630-8069-1c6fe470a9eb" />
+<img width="1920" height="991" alt="Screenshot (1371)" src="https://github.com/user-attachments/assets/8d146b5d-1fd5-484e-8b04-fce74fc4abd6" />
+
+
