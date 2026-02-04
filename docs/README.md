@@ -1043,3 +1043,58 @@ So it will:
 <img width="1920" height="997" alt="Screenshot (1377)" src="https://github.com/user-attachments/assets/324fc940-bb9f-428f-8ed5-4c143bb5e77b" />
 - `intranet.anzy.world Will no longer exist as a public but in the private hosted zone so its vpc scoped and do not resolve on the public internet
 <img width="1920" height="616" alt="Screenshot (1378)" src="https://github.com/user-attachments/assets/4ee291d5-feea-4e08-9438-cd20d7b2a8a7" />
+
+ ## Phase 8 = Auditing & Visibility.
+ I’ll do this in a real-life order:
+
+- `CloudTrail` (audit trail) → S3 (log archive)
+- Optional but recommended: CloudTrail → CloudWatch Logs (near-real-time)
+- Tighten S3 security (encryption + block public + retention)
+- Quick verification commands (CLI)
+
+**Below is the clean plan**.
+
+#### Phase 8 Deliverables (what we’ll build)
+A) CloudTrail (multi-region)
+- Records who did what in AWS
+- Includes global services (IAM, etc.)
+B) Central log bucket (S3)
+- Encrypted
+- Block public access
+-Retention/lifecycle rules
+C) Quick verification
+- Confirm trail is logging
+- Confirm logs land in S3
+#### Added these new files
+```bash
+modules/auditing/
+  main.tf
+  variables.tf
+  outputs.tf
+```
+- call the module im envs/prod/main.tf
+```
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+```
+<img width="1920" height="998" alt="Screenshot (1379)" src="https://github.com/user-attachments/assets/ff0e7f96-cb0f-4766-914b-4f9492f73954" />
+
+#### After apply: what to check (commands)
+1) Confirm CloudTrail exists
+2) Confirm logging is ON
+```bash
+aws cloudtrail describe-trails --query "trailList[*].[Name,S3BucketName,IsMultiRegionTrail,IncludeGlobalServiceEvents]" --output table #Confirm CloudTrail exists
+aws cloudtrail get-trail-status --name nas-financial-prod-trail    #Confirm logging is ON 
+aws s3api get-public-access-block --bucket nas-financial-prod-cloudtrail-436083576844  #Confirm S3 bucket exists + is private
+aws s3 ls s3://nas-financial-prod-cloudtrail-436083576844/AWSLogs/ --recursive --human-readable --summarize  #Confirm logs are arriving in S3
+```
+<img width="1920" height="974" alt="Screenshot (1380)" src="https://github.com/user-attachments/assets/3a221d47-949d-401a-87c8-f70e89e3933f" />
+<img width="1920" height="993" alt="Screenshot (1382)" src="https://github.com/user-attachments/assets/4db8fb10-13b2-48b8-9d28-14e977f1232c" />
+
+## Phase 8B: Send CloudTrail to CloudWatch Logs
+So I you can:
+- create alerts (unauthorized API calls, root usage, policy changes)
+- build dashboards
+- do quick incident investigation
