@@ -165,9 +165,42 @@ module "intranet_app" {
   private_subnet_ids = module.network.private_subnet_ids
   vpc_cidr           = "10.0.0.0/16"
 
-  route53_zone_id = var.route53_zone_id
+  route53_zone_id = aws_route53_zone.private_anzyworld.zone_id
   intranet_fqdn   = "intranet.anzyworld.com"
 
   instance_type = "t3.micro"
   http_port     = 80
+}
+
+resource "aws_route53_zone" "private_anzyworld" {
+  name = "anzyworld.com"
+
+  vpc {
+    vpc_id = module.network.vpc_id
+  }
+
+  comment = "Private hosted zone for intranet/internal names"
+
+  tags = local.tags
+}
+
+module "auditing" {
+  source = "../../modules/auditing"
+
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  alerts_topic_arn = module.rds.alerts_topic_arn # or wherever your SNS output is
+}
+
+module "grafana" {
+  source = "../../modules/grafana"
+
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  authentication_providers = ["AWS_SSO"]
+  permission_type          = "SERVICE_MANAGED"
 }
