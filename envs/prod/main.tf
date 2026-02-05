@@ -204,3 +204,42 @@ module "grafana" {
   authentication_providers = ["AWS_SSO"]
   permission_type          = "SERVICE_MANAGED"
 }
+
+module "vpc_flow_logs" {
+  source  = "../../modules/vpc_flow_logs"
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  vpc_id            = module.network.vpc_id
+  retention_in_days = 90
+}
+
+module "budget" {
+  source  = "../../modules/budget"
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  limit_usd    = 30
+  alert_emails = ["YOUR_EMAIL_HERE"]
+}
+module "vpc_flow_logs" {
+  source  = "../../modules/vpc_flow_logs"
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  vpc_id            = module.network.vpc_id
+  retention_in_days = 90
+}
+
+module "budget" {
+  source  = "../../modules/budget"
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  limit_usd    = 30
+  alert_emails = ["YOUR_EMAIL_HERE"]
+}
