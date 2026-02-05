@@ -1,55 +1,90 @@
 pipeline {
   agent any
 
-  options {
-    timestamps()
-    disableConcurrentBuilds()
+  environment {
+    AWS_REGION = "us-east-1"
+    TF_IN_AUTOMATION = "true"
+    TF_INPUT = "false"
+    ENV_DIR = "envs/prod"
   }
 
-  environment {
-    AWS_DEFAULT_REGION = "us-east-1"
-    TF_IN_AUTOMATION   = "true"
+  options {
+    timestamps()
   }
 
   stages {
-    stage('Checkout') {
+    stage("Checkout") {
       steps {
         checkout scm
       }
     }
 
-    stage('Terraform Init') {
+    stage("Install Terraform (if missing)") {
       steps {
-        dir('envs/prod') {
-          sh 'terraform --version'
-          sh 'terraform init'
-        }
+        sh '''
+          set -e
+          if ! command -v terraform >/dev/null 2>&1; then
+            echo "Terraform not found. Installing..."
+            sudo yum install -y yum-utils
+            sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+            sudo yum -y install terraform
+          fi
+          terraform version
+        '''
       }
     }
 
-    stage('Terraform Plan') {
+    stage("Terraform Format & Validate") {
       steps {
-        dir('envs/prod') {
-          sh 'terraform plan -out=tfplan'
-        }
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform fmt -check -recursive
+          terraform validate
+        '''
       }
     }
 
-    stage('Terraform Apply (Manual Approval)') {
+    stage("Terraform Init") {
       steps {
-        input message: "Approve APPLY to PROD?", ok: "Apply"
-        dir('envs/prod') {
-          sh 'terraform apply -auto-approve tfplan'
-        }
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform init -input=false
+        '''
+      }
+    }
+
+    stage("Terraform Plan") {
+      steps {
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform plan -out=tfplan
+        '''
+      }
+    }
+
+    stage("Approval") {
+      steps {
+        input message: "Approve Terraform APPLY to PROD?", ok: "Apply"
+      }
+    }
+
+    stage("Terraform Apply") {
+      steps {
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform apply -auto-approve tfplan
+        '''
       }
     }
   }
 
   post {
     always {
-      dir('envs/prod') {
-        sh 'terraform show -no-color || true'
-      }
+      echo "Pipeline finished."
     }
   }
 }
