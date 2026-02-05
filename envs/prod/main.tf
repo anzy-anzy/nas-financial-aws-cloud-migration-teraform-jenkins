@@ -222,24 +222,16 @@ module "budget" {
   tags    = local.tags
 
   limit_usd    = 30
-  alert_emails = ["YOUR_EMAIL_HERE"]
+  alert_emails = ["anselmebsiy59@gmail.com"]
 }
-module "vpc_flow_logs" {
-  source  = "../../modules/vpc_flow_logs"
+
+module "jenkins" {
+  source  = "../../modules/jenkins"
   project = var.project
   env     = var.env
   tags    = local.tags
 
-  vpc_id            = module.network.vpc_id
-  retention_in_days = 90
-}
-
-module "budget" {
-  source  = "../../modules/budget"
-  project = var.project
-  env     = var.env
-  tags    = local.tags
-
-  limit_usd    = 30
-  alert_emails = ["YOUR_EMAIL_HERE"]
+  vpc_id        = module.network.vpc_id
+  subnet_id     = module.network.private_subnet_ids[0] # ✅ PRIVATE subnet
+  instance_type = "t3.micro"
 }
