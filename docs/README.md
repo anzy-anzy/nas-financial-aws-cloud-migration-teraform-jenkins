@@ -1093,8 +1093,122 @@ aws s3 ls s3://nas-financial-prod-cloudtrail-436083576844/AWSLogs/ --recursive -
 <img width="1920" height="974" alt="Screenshot (1380)" src="https://github.com/user-attachments/assets/3a221d47-949d-401a-87c8-f70e89e3933f" />
 <img width="1920" height="993" alt="Screenshot (1382)" src="https://github.com/user-attachments/assets/4db8fb10-13b2-48b8-9d28-14e977f1232c" />
 
-## Phase 8B: Send CloudTrail to CloudWatch Logs
-So I you can:
-- create alerts (unauthorized API calls, root usage, policy changes)
-- build dashboards
-- do quick incident investigation
+# Phase 8B — CloudTrail → CloudWatch + Security Alarms 
+
+## Goal (What we’re building)
+In Phase 8B we extend CloudTrail auditing by sending CloudTrail events to **CloudWatch Logs**, then create **metric filters + alarms** to detect security-critical activity and notify the team via **SNS**.
+
+This gives us real-time security monitoring on top of the audit trail.
+
+---
+
+##  Phase 8B Adds
+### 1) CloudTrail to CloudWatch Logs (near real-time)
+- Attach CloudTrail to a CloudWatch Log Group:
+  - Log Group name: `/aws/cloudtrail/<project>-<env>`
+- Create IAM Role/Policy that allows CloudTrail to publish logs to CloudWatch
+
+### 2) Detection (Metric Filters)
+We create CloudWatch **Log Metric Filters** on the CloudTrail log group for:
+- **Root activity**
+  - Detects when the Root user is used
+- **Security Group changes**
+  - Detects SG rule changes and SG create/delete activity
+- **CloudTrail tampering**
+  - Detects StopLogging / DeleteTrail / UpdateTrail
+
+Each filter writes a custom metric into a security namespace.
+
+### 3) Alerting (CloudWatch Alarms + SNS)
+- CloudWatch alarms are created for each metric filter
+- Alarm actions send notifications to the **existing SNS topic**:
+  - `nas-financial-prod-alerts` (from your Terraform outputs)
+
+---
+
+## Terraform Plan — What You Should See
+When you run:
+
+```bash
+terraform init
+terraform fmt
+terraform validate
+terraform plan
+```
+<img width="1920" height="1002" alt="Screenshot (1386)" src="https://github.com/user-attachments/assets/dd4d936c-1516-47b9-8cbe-cdb498d841e0" />
+#### terraform plan sumary
+- update in-place for aws_cloudtrail.this
+- Adding:
+  - cloud_watch_logs_group_arn
+  - cloud_watch_logs_role_arn
+- + `create` CloudWatch log group for CloudTrail
+- + `create` IAM role + inline policy for CloudTrail → CloudWatch
+- + `create` metric filters (root, SG changes, CloudTrail changes)
+- + `create` CloudWatch alarms linked to SNS
+```bash
+terraform apply
+```
+<img width="1920" height="1002" alt="Screenshot (1387)" src="https://github.com/user-attachments/assets/94dc9190-40a4-4827-8382-33f446d14489" />
+`Terraform` will:
+- `Create` the CloudWatch log group
+- `Create` the IAM role/policy for CloudTrail log delivery
+- `Update` the existing CloudTrail to deliver logs to CloudWatch
+- `Create` metric filters
+- `Create` alarms that notify SNS
+###### Verification after apply
+```bash
+# Confirm CloudTrail is sending to CloudWatch Logs
+aws cloudtrail describe-trails --query "trailList[?Name=='nas-financial-prod-trail'].[Name,CloudWatchLogsLogGroupArn,CloudWatchLogsRoleArn]" --output table
+#Confirm log groups exist
+aws logs describe-log-groups --log-group-name-prefix "/aws/cloudtrail/nas-financial-prod" --output table
+#Confirm metric filters exist
+aws logs describe-metric-filters --log-group-name "/aws/cloudtrail/nas-financial-prod" --output table
+#Confirm alarms exist
+aws cloudwatch describe-alarms --alarm-name-prefix "nas-financial-prod-ALARM" --output table
+```
+<img width="1920" height="982" alt="Screenshot (1388)" src="https://github.com/user-attachments/assets/e22c669e-cc72-4b4a-ad7b-5b92605b572b" />
+ should see:
+`nas-financial-prod-ALARM-RootActivity`
+`nas-financial-prod-ALARM-SecurityGroupChanges`
+`nas-financial-prod-ALARM-CloudTrailChanges`
+## Phase 9A: Create Amazon Managed Grafana Workspace
+**i'll will build**
+- A Grafana workspace
+- A service role for Grafana that allows reading from CloudWatch (and Logs if we enable it)
+- Enable `data_sources = ["CLOUDWATCH"]` 
+
+#### Create a new module:
+- `modules/grafana/main.tf`
+- `modules/grafana/variables.tf`
+- `modules/grafana/outputs.tf`
+
+**Then call it in**
+
+`envs/prod/main.tf`
+Run comands from envs/prod
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="1014" alt="Screenshot (1389)" src="https://github.com/user-attachments/assets/bae11aac-37e3-46e1-97c1-c87fb23e0c90" />
+```bash
+terraform apply
+```
+<img width="1920" height="973" alt="Screenshot (1391)" src="https://github.com/user-attachments/assets/738042b5-b31d-49cb-a897-8f8c69d5dbcc" />
+<img width="1920" height="926" alt="Screenshot (1392)" src="https://github.com/user-attachments/assets/c1127020-8b44-41a8-8c7b-38236dd37a29" />
+#### verifications after apply
+```bash
+aws grafana list-workspaces --region us-east-1 #Confirm the Grafana workspace exists
+aws iam get-role --role-name nas-financial-prod-grafana-role #Confirm the IAM role exists (Grafana access role)
+aws grafana describe-workspace --workspace-id <ID> --region us-east-1 # grafana URL
+```
+#### Phase 9A = Infrastructure readiness, not visualization work yet.
+- Grafana workspace defined via Terraform
+- IAM role created for Grafana
+- Read access to CloudWatch + Logs
+- Uses AWS SSO (best practice)
+- Fully reproducible (IaC)
+
+That’s exactly how it’s done in real life.
+
