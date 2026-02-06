@@ -2,24 +2,25 @@ pipeline {
   agent any
 
   environment {
-    AWS_REGION = "us-east-1"
+    ENV_DIR   = "envs/prod"
     TF_IN_AUTOMATION = "true"
-    TF_INPUT = "false"
-    ENV_DIR = "envs/prod"
+    TF_INPUT  = "false"
   }
 
   options {
     timestamps()
+    ansiColor('xterm')
+    disableConcurrentBuilds()
   }
 
   stages {
-    stage("Checkout") {
+    stage('Checkout') {
       steps {
         checkout scm
       }
     }
 
-    stage("Install Terraform (if missing)") {
+    stage('Install Terraform (if missing)') {
       steps {
         sh '''
           set -e
@@ -34,18 +35,7 @@ pipeline {
       }
     }
 
-    stage("Terraform Format & Validate") {
-      steps {
-        sh '''
-          set -e
-          cd ${ENV_DIR}
-          terraform fmt -check -recursive
-          terraform validate
-        '''
-      }
-    }
-
-    stage("Terraform Init") {
+    stage('Terraform Init') {
       steps {
         sh '''
           set -e
@@ -55,36 +45,64 @@ pipeline {
       }
     }
 
-    stage("Terraform Plan") {
+    stage('Terraform Format Check') {
       steps {
         sh '''
           set -e
           cd ${ENV_DIR}
-          terraform plan -out=tfplan
+          terraform fmt -check -recursive
         '''
       }
     }
 
-    stage("Approval") {
-      steps {
-        input message: "Approve Terraform APPLY to PROD?", ok: "Apply"
-      }
-    }
-
-    stage("Terraform Apply") {
+    stage('Terraform Validate') {
       steps {
         sh '''
           set -e
           cd ${ENV_DIR}
-          terraform apply -auto-approve tfplan
+          terraform validate
+        '''
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform plan -input=false -no-color | tee tfplan.txt
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: "${ENV_DIR}/tfplan.txt", fingerprint: true, onlyIfSuccessful: false
+        }
+      }
+    }
+
+    stage('Approval') {
+      steps {
+        input message: "Approve Terraform APPLY for ${ENV_DIR}?"
+      }
+    }
+
+    stage('Terraform Apply') {
+      steps {
+        sh '''
+          set -e
+          cd ${ENV_DIR}
+          terraform apply -auto-approve -input=false
         '''
       }
     }
   }
 
   post {
-    always {
-      echo "Pipeline finished."
+    success {
+      echo "✅ Pipeline completed successfully."
+    }
+    failure {
+      echo "❌ Pipeline failed. Open the stage logs to see the exact error."
     }
   }
 }
