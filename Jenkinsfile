@@ -2,20 +2,20 @@ pipeline {
   agent any
 
   environment {
-    ENV_DIR   = "envs/prod"
-    TF_IN_AUTOMATION = "true"
-    TF_INPUT  = "false"
+    AWS_DEFAULT_REGION = 'us-east-1'
+    ENV_DIR            = 'envs/prod'
   }
 
   options {
     timestamps()
-    ansiColor('xterm')
     disableConcurrentBuilds()
   }
 
   stages {
     stage('Checkout') {
       steps {
+        // Clean workspace to avoid "No changes" confusion / cached files
+        deleteDir()
         checkout scm
       }
     }
@@ -26,9 +26,12 @@ pipeline {
           set -e
           if ! command -v terraform >/dev/null 2>&1; then
             echo "Terraform not found. Installing..."
-            sudo yum install -y yum-utils
-            sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
-            sudo yum -y install terraform
+            sudo yum install -y unzip curl >/dev/null 2>&1 || true
+            TF_VERSION="1.7.5"
+            curl -fsSL -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+            unzip -o /tmp/terraform.zip -d /tmp
+            sudo mv /tmp/terraform /usr/local/bin/terraform
+            sudo chmod +x /usr/local/bin/terraform
           fi
           terraform version
         '''
@@ -45,21 +48,12 @@ pipeline {
       }
     }
 
-    stage('Terraform Format Check') {
+    stage('Terraform Format & Validate') {
       steps {
         sh '''
           set -e
           cd ${ENV_DIR}
           terraform fmt -check -recursive
-        '''
-      }
-    }
-
-    stage('Terraform Validate') {
-      steps {
-        sh '''
-          set -e
-          cd ${ENV_DIR}
           terraform validate
         '''
       }
@@ -70,19 +64,14 @@ pipeline {
         sh '''
           set -e
           cd ${ENV_DIR}
-          terraform plan -input=false -no-color | tee tfplan.txt
+          terraform plan -input=false
         '''
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: "${ENV_DIR}/tfplan.txt", fingerprint: true, onlyIfSuccessful: false
-        }
       }
     }
 
     stage('Approval') {
       steps {
-        input message: "Approve Terraform APPLY for ${ENV_DIR}?"
+        input message: "Apply Terraform changes to PROD?", ok: "Yes, Apply"
       }
     }
 
@@ -98,11 +87,8 @@ pipeline {
   }
 
   post {
-    success {
-      echo "✅ Pipeline completed successfully."
-    }
-    failure {
-      echo "❌ Pipeline failed. Open the stage logs to see the exact error."
+    always {
+      echo "Pipeline finished (success or failure)."
     }
   }
 }
