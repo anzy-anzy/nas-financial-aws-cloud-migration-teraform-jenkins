@@ -233,5 +233,5 @@ module "jenkins" {
 
   vpc_id        = module.network.vpc_id
   subnet_id     = module.network.private_subnet_ids[0] # ✅ PRIVATE subnet
-  instance_type = "t3.micro"
+  instance_type = "t3.small"
 }
