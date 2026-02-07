@@ -52,16 +52,21 @@ This phase sets up the repository structure and Terraform baseline required for 
 ## Repository Structure
 ```bash
 nas-financial-aws-cloud-migration-terraform-jenkins/
-├── modules/ # Reusable Terraform modules (built per component)
-│ ├── iam/
-│ ├── network/
+├── modules/ 
+│ ├── iam/  variables.tf outputs.tf policies.tf roles.tf trust.tf 
+│ ├── network/ empty
 │ ├── storage/
-│ ├── ecs_dynamic_site/
-│ ├── ecs_intranet/
-│ ├── rds/
-│ ├── static_site/
-│ ├── monitoring/
-│ └── jenkins/
+│ ├── budget/ main.tf variables.tf outputs.tf
+│ ├── ecs_dynamic_site/ variables.tf outputs.tf alb.tf ecs.tf iam.tf route53.tf service.tf task.tf tls.tf 
+│ ├── intranet_app/ main.tf variables.tf outputs.tf
+│ ├── rds/ variables.tf outputs.tf alarms.tf backups.tf rds.tf secrets.tf subnet_group.tf versions.tf
+│ ├── static_site/ main.tf variables.tf outputs.tf versions.tf
+│ ├── grafana/ main.tf variables.tf outputs.tf
+│ ├── vpc_flow_logs/ main.tf variables.tf outputs.tf
+│ ├── auditing/ main.tf variables.tf outputs.tf alarms.tf cloudwatch.tf
+│ ├── monitoring/ emty
+│ └── jenkins/ main.tf variables.tf outputs.tf
+├── Jenkinsfiles
 ├── envs/
 │ └── prod/ # Production environment (root Terraform execution directory)
 │ ├── backend.tf
@@ -71,9 +76,9 @@ nas-financial-aws-cloud-migration-terraform-jenkins/
 │ ├── variables.tf
 │ └── outputs.tf
 └── docs/
-├── decisions.md # Architecture contract / design decisions
-├── project-roadmap.md # Phased roadmap for implementation
-└── architecture.md # (To be completed) architecture details/diagram
+  ├── decisions.md # Architecture contract / design decisions
+  ├── project-roadmap.md # Phased roadmap for implementation
+  └── architecture.md # (To be completed) architecture details/diagram
 ```
 ---
 
@@ -1212,3 +1217,132 @@ aws grafana describe-workspace --workspace-id <ID> --region us-east-1 # grafana 
 
 That’s exactly how it’s done in real life.
 
+## Phase 9B  hardening + ops
+- I’ll do two high-value, real-world things:
+ - **VPC Flow Logs** → visibility for network/security investigations
+ - **AWS Budget** + **alert email** → cost control (super important in real projects)
+I’ll implement both in Terraform as new modules so we don’t break existing ones.
+#### VPC Flow Logs
+```bash
+modules/vpc_flow_logs/main.tf
+modules/vpc_flow_logs/variables.tf
+modules/vpc_flow_logs/outputs.tf
+```
+##### budgets + Email Alerts
+```bash
+modules/budget/main.tf
+modules/budget/variables.tf
+modules/budget/outputs.tf
+```
+- Add both modules in `envs/prod/main.tf`
+- Run the comands from `envs/prod`
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+<img width="1920" height="977" alt="Screenshot (1393)" src="https://github.com/user-attachments/assets/7658fcec-844c-4bb3-affa-621eda140809" />
+```bash
+terraform apply
+```
+<img width="1920" height="960" alt="Screenshot (1394)" src="https://github.com/user-attachments/assets/1c283536-d1b8-4735-9c78-557b3a85e8a5" />
+##### AFTER APPLY CHECK
+- Verify `VPC Flow Logs` (core of this phase)
+You should see:
+- Flow log attached to vpc-0e370df2df452f1a7
+- Destination: CloudWatch Logs
+- Status: ACTIVE
+- Traffic type: ALL
+<img width="1920" height="923" alt="Screenshot (1396)" src="https://github.com/user-attachments/assets/e085afb8-5dad-4d98-b241-d4fe29df452e" />
+
+- Verify `CloudWatch Log Grou`p for `Flow Logs`
+<img width="1920" height="935" alt="Screenshot (1398)" src="https://github.com/user-attachments/assets/7e046df1-b702-4301-a708-7d289c99a708" />
+
+- Verify IAM Role for Flow Logs
+- Verify AWS Budget
+<img width="1920" height="966" alt="Screenshot (1400)" src="https://github.com/user-attachments/assets/36fc1ee3-666e-4dd5-8c80-95efa0ee66e6" />
+Budget name: `nas-financial-prod-monthly-budget`
+Amount: `$30`
+Alerts at `80%` and `100%`
+Email: `anselmebsiy59@gmail.com`
+
+At this point, THIS **environment has**:
+
+✔ Network traffic visibility (VPC Flow Logs)
+✔ Centralized logging (CloudWatch)
+✔ Security audit trail (CloudTrail from Phase 8)
+✔ Cost guardrails (AWS Budgets)
+✔ Observability foundation (Grafana)
+
+**This is exactly how production AWS accounts are run**.
+
+# Phase 10 — Jenkins CI/CD for Terraform (NAS Financial Project)
+
+#### Goal
+Stand up a **private Jenkins server** inside the NAS AWS VPC and use it to run **Terraform plan/apply** from a controlled, auditable place (instead of your laptop).
+
+This phase turns your repo into **Infrastructure-as-Code + Pipeline-as-Code**.
+
+---
+
+## What we built (Terraform)
+Terraform creates a Jenkins host that is:
+- **Private** (no public IP)
+- Managed via **SSM Session Manager** (no SSH needed)
+- Jenkins runs on **port 8080**
+- Access Jenkins UI using **SSM port-forwarding** to `http://localhost:8080`
+
+### Resources created by `module.jenkins`
+- `aws_instance.jenkins` (t3.micro, private subnet)
+- `aws_security_group.jenkins` (no inbound needed if you only use SSM)
+- `aws_iam_role.jenkins_ssm` + `AmazonSSMManagedInstanceCore`
+- `aws_iam_instance_profile.jenkins`
+
+> ✅ You do NOT need to input your home IP anywhere because we are NOT exposing Jenkins publicly.
+
+---
+
+## Repo location (assumed)
+Your repo: `nas-financial-aws-cloud-migration-teraform-jenkins`
+
+Terraform environment:
+- `envs/prod/`
+
+---
+
+## Terraform steps (i already already did)
+From `envs/prod`:
+
+```bash
+terraform fmt -recursive
+terraform init
+terraform plan
+terraform apply
+```
+<img width="1920" height="960" alt="Screenshot (1402)" src="https://github.com/user-attachments/assets/d52237f2-b377-4bed-b70b-6f461a70c262" />
+
+
+Expected: Jenkins EC2 is created successfully.
+
+#### Verification checklist (Phase 10)
+1) Confirm instance exists
+<img width="1920" height="990" alt="Screenshot (1406)" src="https://github.com/user-attachments/assets/d0f9e520-d0bd-4a22-959a-44fab2ecc249" />
+2) Start port-forwarding session (keep this terminal OPEN)
+```bash
+aws ssm start-session \
+  --target <JENKINS_INSTANCE_ID> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}' \
+  --region us-east-1
+```
+- Open `http://localhost:8080`
+
+- Get initial Jenkins password (via SSM shell)
+- `Start an SSM shell session`:
+  ```bash
+  aws ssm start-session --target <JENKINS_INSTANCE_ID> --region us-east-1
+```
+Then inside the instance:
+```bash
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
