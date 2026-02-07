@@ -1,5 +1,5 @@
 pipeline {
-  agent any
+  agent { label 'terraform' }
 
   environment {
     AWS_DEFAULT_REGION = 'us-east-1'
@@ -14,7 +14,6 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         deleteDir()
@@ -27,7 +26,6 @@ pipeline {
         sh '''
           set -e
           if ! command -v terraform >/dev/null 2>&1; then
-            echo "Terraform not found. Installing..."
             sudo yum install -y unzip curl
             TF_VERSION="1.14.4"
             curl -fsSL -o /tmp/terraform.zip \
@@ -44,7 +42,6 @@ pipeline {
     stage('Terraform Init') {
       steps {
         sh '''
-          set -e
           cd ${ENV_DIR}
           terraform init
         '''
@@ -54,7 +51,6 @@ pipeline {
     stage('Terraform Format & Validate') {
       steps {
         sh '''
-          set -e
           cd ${ENV_DIR}
           terraform fmt -check -recursive
           terraform validate
@@ -65,7 +61,6 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         sh '''
-          set -e
           cd ${ENV_DIR}
           terraform plan -out=tfplan
         '''
@@ -81,7 +76,6 @@ pipeline {
     stage('Terraform Apply') {
       steps {
         sh '''
-          set -e
           cd ${ENV_DIR}
           terraform apply tfplan
         '''
