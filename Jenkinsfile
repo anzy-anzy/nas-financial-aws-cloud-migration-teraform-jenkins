@@ -7,11 +7,11 @@ pipeline {
     TF_IN_AUTOMATION     = 'true'
     TF_INPUT             = 'false'
 
-    // Avoid /tmp (often small tmpfs). Put temp downloads/unzips on disk.
+    // Use disk-backed temp (you already bind-mounted /tmp, but this is fine too)
     TMPDIR               = '/opt/jenkins/tmp'
 
-    // Speed up provider downloads
-    TF_PLUGIN_CACHE_DIR  = "${WORKSPACE}/.terraform.d/plugin-cache"
+    // Persistent Terraform provider cache (survives cleanWs)
+    TF_PLUGIN_CACHE_DIR  = '/opt/jenkins/tf-plugin-cache'
   }
 
   options {
@@ -34,11 +34,31 @@ pipeline {
           set -euxo pipefail
           echo "Disk:"
           df -h
-          echo "Temp:"
+          echo "Temp (/tmp):"
           df -h /tmp || true
+          echo "Temp (/opt/jenkins/tmp):"
+          df -h /opt/jenkins/tmp || true
           java -version
           git --version
           terraform version || true
+        '''
+      }
+    }
+
+    stage('Prepare Cache & Temp Dirs') {
+      steps {
+        sh '''
+          set -euxo pipefail
+
+          # Temp dir on disk
+          sudo mkdir -p "${TMPDIR}"
+          sudo chmod 1777 "${TMPDIR}"
+
+          # Persistent plugin cache (providers)
+          sudo mkdir -p "${TF_PLUGIN_CACHE_DIR}"
+          sudo chown -R "$(id -un)":"$(id -gn)" "${TF_PLUGIN_CACHE_DIR}"
+
+          ls -ld "${TMPDIR}" "${TF_PLUGIN_CACHE_DIR}"
         '''
       }
     }
@@ -47,10 +67,6 @@ pipeline {
       steps {
         sh '''
           set -euxo pipefail
-
-          # Ensure TMPDIR exists (on disk) and is writable
-          sudo mkdir -p "${TMPDIR}"
-          sudo chown -R "$(id -un)":"$(id -gn)" "${TMPDIR}"
 
           if ! command -v terraform >/dev/null 2>&1; then
             echo "Terraform not found. Installing..."
@@ -79,7 +95,6 @@ pipeline {
       steps {
         sh '''
           set -euxo pipefail
-          mkdir -p "${TF_PLUGIN_CACHE_DIR}"
           cd "${ENV_DIR}"
           terraform init
         '''
@@ -135,7 +150,9 @@ pipeline {
         df -h
         echo "Temp after run:"
         df -h /tmp || true
-        df -h /opt/jenkins || true
+        df -h /opt/jenkins/tmp || true
+        echo "Plugin cache dir:"
+        du -sh /opt/jenkins/tf-plugin-cache || true
       '''
       cleanWs()
       echo "Pipeline finished."
