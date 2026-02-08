@@ -6,9 +6,7 @@ pipeline {
     ENV_DIR            = 'envs/prod'
     TF_IN_AUTOMATION   = 'true'
     TF_INPUT           = 'false'
-
-    // Cache providers so we don't re-download every build
-    TF_PLUGIN_CACHE_DIR = '/home/ec2-user/.terraform.d/plugin-cache'
+    TF_PLUGIN_CACHE_DIR = "${WORKSPACE}/.terraform.d/plugin-cache"
   }
 
   options {
@@ -20,33 +18,32 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        deleteDir()
+        cleanWs()
         checkout scm
-        stash name: 'src', includes: '**/*'
       }
     }
 
-    stage('Prepare Agent') {
+    stage('Tools Check') {
       steps {
-        unstash 'src'
+        sh '''
+          set -eux
+          df -h
+          java -version
+          git --version
+          terraform version || true
+        '''
+      }
+    }
+
+    stage('Install Terraform (if missing)') {
+      steps {
         sh '''
           set -e
-
-          # Create plugin cache directory
-          mkdir -p "$TF_PLUGIN_CACHE_DIR"
-
-          # Ensure required tools exist
-          if ! command -v unzip >/dev/null 2>&1; then
-            sudo dnf -y install unzip
-          fi
-
-          # Ensure curl exists (AL2023 sometimes has curl-minimal conflicts)
-          if ! command -v curl >/dev/null 2>&1; then
-            sudo dnf -y swap curl-minimal curl --allowerasing || sudo dnf -y install curl --allowerasing
-          fi
-
-          # Install Terraform if missing
           if ! command -v terraform >/dev/null 2>&1; then
+            echo "Terraform not found. Installing..."
+            sudo dnf -y install unzip || true
+            sudo dnf -y swap curl-minimal curl --allowerasing || sudo dnf -y install curl --allowerasing
+
             TF_VERSION="1.14.4"
             curl -fsSL -o /tmp/terraform.zip \
               https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
@@ -54,7 +51,6 @@ pipeline {
             sudo mv /tmp/terraform /usr/local/bin/terraform
             sudo chmod +x /usr/local/bin/terraform
           fi
-
           terraform version
         '''
       }
@@ -63,17 +59,18 @@ pipeline {
     stage('Terraform Init') {
       steps {
         sh '''
-          set -e
+          set -eux
+          mkdir -p "${TF_PLUGIN_CACHE_DIR}"
           cd "${ENV_DIR}"
-          terraform init -input=false -upgrade
+          terraform init -upgrade
         '''
       }
     }
 
-    stage('Terraform Format & Validate') {
+    stage('Terraform Format & Validate') 
       steps {
         sh '''
-          set -e
+          set -eux
           cd "${ENV_DIR}"
           terraform fmt -check -recursive
           terraform validate
@@ -84,25 +81,28 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         sh '''
-          set -e
+          set -eux
           cd "${ENV_DIR}"
-          terraform plan -lock-timeout=5m -out=tfplan
+          terraform plan -out=tfplan
         '''
+        archiveArtifacts artifacts: "${ENV_DIR}/tfplan", fingerprint: true
       }
     }
 
     stage('Approval') {
       steps {
-        input message: "Apply Terraform changes to PROD?", ok: "Yes, Apply"
+        timeout(time: 15, unit: 'MINUTES') {
+          input message: "Apply Terraform changes to PROD?", ok: "Yes, Apply"
+        }
       }
     }
 
     stage('Terraform Apply') {
       steps {
         sh '''
-          set -e
+          set -eux
           cd "${ENV_DIR}"
-          terraform apply -lock-timeout=5m -input=false tfplan
+          terraform apply -auto-approve tfplan
         '''
       }
     }
@@ -110,8 +110,13 @@ pipeline {
 
   post {
     always {
+      sh '''
+        set +e
+        echo "Disk after run:"
+        df -h
+      '''
+      cleanWs()
       echo "Pipeline finished."
-      cleanWs(deleteDirs: true, disableDeferredWipeout: true)
     }
   }
 }
