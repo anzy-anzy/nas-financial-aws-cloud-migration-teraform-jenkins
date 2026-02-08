@@ -224,14 +224,3 @@ module "budget" {
   limit_usd    = 30
   alert_emails = ["anselmebsiy59@gmail.com"]
 }
-
-module "jenkins" {
-  source  = "../../modules/jenkins"
-  project = var.project
-  env     = var.env
-  tags    = local.tags
-
-  vpc_id        = module.network.vpc_id
-  subnet_id     = module.network.private_subnet_ids[0] # ✅ PRIVATE subnet
-  instance_type = "t3.small"
-}
