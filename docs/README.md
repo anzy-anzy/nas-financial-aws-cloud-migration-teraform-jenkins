@@ -1215,7 +1215,133 @@ aws grafana describe-workspace --workspace-id <ID> --region us-east-1 # grafana 
 - Uses AWS SSO (best practice)
 - Fully reproducible (IaC)
 
-That’s exactly how it’s done in real life.
+That’s exactly how it’s done in real lif
+
+## Login to Amazon Managed Grafana
+
+1. Open the AWS Console
+2. Navigate to **Amazon Managed Grafana**
+3. Select the workspace:  
+   `nas-financial-prod-grafana`
+4. Click **Open Grafana workspace**
+5. Authenticate using **IAM Identity Center (SSO)**
+<img width="1920" height="994" alt="Screenshot (1464)" src="https://github.com/user-attachments/assets/f7414e79-1758-4602-a0e1-82ee32458440" />
+  
+> Admin permissions were required to create dashboards and alerts.
+
+---
+
+## 2. Verify User Permissions (Important)
+
+- Go to **IAM Identity Center**
+- Open the Grafana application
+- Assign the user **Admin** role
+- Log out and log back in to Grafana
+
+✅ This enables:
+- Dashboard creation
+- Data source management
+- Alerting and contact points
+
+---
+
+## 3. Configure CloudWatch as Data Source
+
+1. In Grafana, go to **Connections → Add new connection**
+2. Select **CloudWatch**
+3. Use:
+   - **Authentication provider:** Workspace IAM Role
+   - **Region:** us-east-1
+4. Save & test the connection
+
+CloudWatch is now available for metrics and logs.
+
+---
+
+## 4. Import a Dashboard
+
+1. Go to **Dashboards**
+2. Click **➕ Create → Import**
+3. Import using:
+   - A Grafana.com dashboard ID (example: CloudWatch Logs dashboard)
+   - OR upload a dashboard JSON file
+4. When prompted, select:
+   - **Data source:** CloudWatch
+5. Click **Import**
+
+The dashboard is now visible and active.
+<img width="1920" height="919" alt="Screenshot (1468)" src="https://github.com/user-attachments/assets/777f8bd4-fa92-42e5-989a-6ada30b2e2cf" />
+
+---
+
+## 5. Create Alerts (Grafana Managed Alerts)
+
+Two example alerts were created to simulate real production monitoring.
+
+### Alert 1: EC2 CPU Utilization
+- **Metric:** `AWS/EC2 → CPUUtilization`
+- **Statistic:** Average
+- **Condition:** CPU > 80%
+- **Evaluation period:** 5 minutes
+- **Severity:** Critical
+
+### Alert 2: CloudWatch Logs Activity
+- **Metric:** CloudWatch Logs ingestion / activity
+- **Condition:** Activity exceeds baseline
+- **Purpose:** Detect abnormal log spikes
+
+Alerts are evaluated by **Grafana-managed alert rules**.
+
+<img width="1920" height="915" alt="Screenshot (1469)" src="https://github.com/user-attachments/assets/ef61aefe-a7e7-459f-9f5d-56559cbd02ac" />
+
+---
+
+## 6. Configure Alert Notifications (SNS)
+
+### Create SNS Topic
+- Region: **us-east-1**
+- Topic: `nas-financial-prod-alerts`
+- Subscription: **Email**
+- Confirm email subscription
+
+### Configure Grafana Contact Point
+1. Go to **Alerting → Contact points**
+2. Create or edit **SNS contact point**
+3. Set:
+   - **Region:** `us-east-1`
+   - **Topic ARN:**  
+     `arn:aws:sns:us-east-1:436083576844:nas-financial-prod-alerts`
+4. Save and test
+
+> Setting the region explicitly is required to avoid SNS endpoint errors.
+
+---
+
+## 7. Verify Alerts
+
+- When alert conditions are met:
+  - Alert status changes to **Pending → Firing**
+  - Email notifications are sent via SNS
+- Successful delivery confirms:
+  - Grafana ↔ CloudWatch integration
+  - Grafana ↔ SNS permissions
+  - Alert routing configuration
+  - <img width="1920" height="915" alt="Screenshot (1469)" src="https://github.com/user-attachments/assets/004c5611-29ff-458b-b46f-3f829d001967" />
+
+email
+<img width="1920" height="1010" alt="Screenshot (1471)" src="https://github.com/user-attachments/assets/9c9cfa86-fbad-4c77-bae3-fcd1ede71fb3" />
+
+---
+
+## Outcome
+
+✅ Centralized monitoring with Grafana  
+✅ Real-time CloudWatch metrics visualization  
+✅ Automated email alerts using SNS  
+✅ Production-style alerting without unnecessary complexity  
+
+This completes the monitoring and alerting setup for Phase 10.
+
 
 ## Phase 9B  hardening + ops
 - I’ll do two high-value, real-world things:
@@ -1266,6 +1392,8 @@ Amount: `$30`
 Alerts at `80%` and `100%`
 Email: `anselmebsiy59@gmail.com`
 
+<img width="1920" height="1001" alt="Screenshot (1474)" src="https://github.com/user-attachments/assets/39a3d5a7-1eb2-4d88-b9b6-f8532b0e70ae" /><img width="1920" height="990" alt="Screenshot (1473)" src="https://github.com/user-attachments/assets/2310c9b8-5e2b-4cb4-9d68-56e5113e8ff6" />
+
 At this point, THIS **environment has**:
 
 ✔ Network traffic visibility (VPC Flow Logs)
@@ -1276,73 +1404,146 @@ At this point, THIS **environment has**:
 
 **This is exactly how production AWS accounts are run**.
 
-# Phase 10 — Jenkins CI/CD for Terraform (NAS Financial Project)
+# Phase 10 — Jenkins CI/CD Pipeline (Terraform)
 
-#### Goal
-Stand up a **private Jenkins server** inside the NAS AWS VPC and use it to run **Terraform plan/apply** from a controlled, auditable place (instead of your laptop).
+This phase implements a Jenkins Declarative Pipeline that runs Terraform in a controlled, repeatable way for the NAS Financial PROD environment.
 
-This phase turns your repo into **Infrastructure-as-Code + Pipeline-as-Code**.
-
----
-
-## What we built (Terraform)
-Terraform creates a Jenkins host that is:
-- **Private** (no public IP)
-- Managed via **SSM Session Manager** (no SSH needed)
-- Jenkins runs on **port 8080**
-- Access Jenkins UI using **SSM port-forwarding** to `http://localhost:8080`
-
-### Resources created by `module.jenkins`
-- `aws_instance.jenkins` (t3.micro, private subnet)
-- `aws_security_group.jenkins` (no inbound needed if you only use SSM)
-- `aws_iam_role.jenkins_ssm` + `AmazonSSMManagedInstanceCore`
-- `aws_iam_instance_profile.jenkins`
-
-> ✅ You do NOT need to input your home IP anywhere because we are NOT exposing Jenkins publicly.
+## Goals
+- Automatically run Terraform **fmt/validate/plan** on every build.
+- Protect production changes using a **manual approval** step.
+- Ensure **Apply runs only on `main`** to avoid accidental changes from other branches.
+- Improve reliability by using:
+  - a stable disk-based temp directory
+  - a Terraform provider plugin cache
 
 ---
 
-## Repo location (assumed)
-Your repo: `nas-financial-aws-cloud-migration-teraform-jenkins`
+## Repository Layout (expected)
+- `Jenkinsfile` — Jenkins pipeline definition
+- `envs/prod` — Terraform root for production
+- `modules/*` — Terraform modules
 
-Terraform environment:
-- `envs/prod/`
+---
+**servers for both jenkins controller and jenkings agent**
+- provided by terraform but not managed by terraform
+<img width="1920" height="1080" alt="Screenshot (1455)" src="https://github.com/user-attachments/assets/cf860fbd-0f73-469a-985f-3ed5bfaca3ea" />
+
+
+## Pipeline Overview (Stages)
+
+1. **Checkout**
+   - Cleans workspace
+   - Pulls source code from GitHub
+
+2. **Prepare Cache & Temp Dirs**
+   - Creates:
+     - `/opt/jenkins/tmp` (temporary downloads/unzip)
+     - `/opt/jenkins/tf-plugin-cache` (Terraform provider cache)
+   - Sets permissions so the build user can write.
+
+3. **Detect Branch**
+   - Detects actual checked-out branch using:
+     - `git rev-parse --abbrev-ref HEAD`
+   - Saves branch in `GIT_BRANCH_NAME`.
+
+4. **Tools Check**
+   - Prints disk usage and confirms versions:
+     - Java
+     - Git
+     - Terraform
+
+5. **Install Terraform (if missing)**
+   - Installs Terraform only if it is not present.
+   - Confirms installed version.
+
+6. **Terraform Init**
+   - Runs `terraform init` inside `envs/prod`.
+
+7. **Terraform Format & Validate**
+   - Runs:
+     - `terraform fmt -check -recursive`
+     - `terraform validate`
+
+8. **Terraform Plan**
+   - Runs:
+     - `terraform plan -out=tfplan`
+   - Archives the `tfplan` artifact in Jenkins.
+
+9. **Approval (main only)**
+   - Manual gate:
+     - “Apply Terraform changes to PROD?”
+   - Runs only when branch is `main`.
+
+10. **Terraform Apply (main only)**
+   - Applies the saved plan:
+     - `terraform apply -auto-approve tfplan`
+   - Runs only when branch is `main`.
+
+11. **Non-main: Stop after plan**
+   - For non-main branches:
+     - Pipeline stops after plan
+     - Apply is skipped
+
+12. **Post Actions**
+   - Prints disk usage
+   - Shows plugin cache size
+   - Cleans workspace
+
+---
+<img width="1920" height="1080" alt="Screenshot (1450)" src="https://github.com/user-attachments/assets/5ce4bcd3-43e4-44c3-a12f-1283261f003b" />
+
+## Branch Safety Rules
+- **main**
+  - Runs: init → validate → plan → approval → apply
+- **non-main**
+  - Runs: init → validate → plan only
+  - Apply is skipped automatically
+
+This protects PROD from accidental applies.
+
+---
+<img width="1920" height="1080" alt="Screenshot (1450)" src="https://github.com/user-attachments/assets/ea466ba4-5abe-4063-8186-cb06e1c4a1af" />
+
+## Jenkins Job Type
+This pipeline is designed for a **single Pipeline job** (not multibranch).  
+Branch detection is handled using Git commands in the pipeline.
 
 ---
 
-## Terraform steps (i already already did)
-From `envs/prod`:
+## Required Jenkins Configuration
 
+### Jenkins Agent
+- Label: `terraform`
+- Must have:
+  - git
+  - Java 17 (or compatible)
+  - Network access to GitHub + AWS APIs
+  <img width="1920" height="1080" alt="Screenshot (1454)" src="https://github.com/user-attachments/assets/0ef7c4cf-2eb6-431b-9953-d3b7180c4e3b" />
+
+### Credentials
+- GitHub credentials configured in Jenkins (used by checkout)
+- AWS credentials available to the build (IAM role, env vars, or credentials binding)
+
+### Git Tool (Recommended)
+Fix the warning “recommended git tool is NONE”:
+- Jenkins → Manage Jenkins → Tools → Git installations
+- Add Git with path:
+  - `git` or `/usr/bin/git`
+
+---
+
+## Common Notes / Troubleshooting
+
+### White stages in Stage View
+White stages typically mean **skipped** due to conditions (`when`).  
+Example: “Non-main: Stop after plan” is skipped when branch = `main`.
+<img width="1920" height="1080" alt="Screenshot (1452)" src="https://github.com/user-attachments/assets/2bb90641-8845-4cd3-bbc2-405efb94676f" />
+<img width="1920" height="1080" alt="Screenshot (1453)" src="https://github.com/user-attachments/assets/b4d7bc3b-2bd7-4b0c-b3f9-07bae738b4d5" />
+
+### Plugin cache permissions
+Make sure Terraform can write to:
+- `/opt/jenkins/tf-plugin-cache`
+
+If needed (one-time server fix):
 ```bash
-terraform fmt -recursive
-terraform init
-terraform plan
-terraform apply
-```
-<img width="1920" height="960" alt="Screenshot (1402)" src="https://github.com/user-attachments/assets/d52237f2-b377-4bed-b70b-6f461a70c262" />
-
-
-Expected: Jenkins EC2 is created successfully.
-
-#### Verification checklist (Phase 10)
-1) Confirm instance exists
-<img width="1920" height="990" alt="Screenshot (1406)" src="https://github.com/user-attachments/assets/d0f9e520-d0bd-4a22-959a-44fab2ecc249" />
-2) Start port-forwarding session (keep this terminal OPEN)
-```bash
-aws ssm start-session \
-  --target <JENKINS_INSTANCE_ID> \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}' \
-  --region us-east-1
-```
-- Open `http://localhost:8080`
-
-- Get initial Jenkins password (via SSM shell)
-- `Start an SSM shell session`:
-  ```bash
-  aws ssm start-session --target <JENKINS_INSTANCE_ID> --region us-east-1
-```
-Then inside the instance:
-```bash
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-```
+sudo chown -R ec2-user:ec2-user /opt/jenkins/tf-plugin-cache
