@@ -157,6 +157,7 @@ resource "aws_route53_record" "nas_default" {
 module "intranet_app" {
   source = "../../modules/intranet_app"
 
+
   project = var.project
   env     = var.env
   tags    = local.tags
@@ -170,6 +171,9 @@ module "intranet_app" {
 
   instance_type = "t3.micro"
   http_port     = 80
+
+  ami_id = "ami-026992d753d5622bc" # <-- the AMI currently used by the EC2
+
 }
 
 resource "aws_route53_zone" "private_anzyworld" {
@@ -224,3 +228,10 @@ module "budget" {
   limit_usd    = 30
   alert_emails = ["anselmebsiy59@gmail.com"]
 }
+
+module "security_hub" {
+  source  = "../../modules/security_hub"
+  project = var.project
+  env     = var.env
+}
+
