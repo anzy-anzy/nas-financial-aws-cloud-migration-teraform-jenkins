@@ -46,3 +46,8 @@ variable "http_port" {
   type    = number
   default = 80
 }
+variable "ami_id" {
+  type        = string
+  description = "Optional AMI ID to pin intranet EC2."
+  default     = ""
+}

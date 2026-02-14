@@ -20,13 +20,13 @@ data "aws_iam_policy_document" "assume_nas_roles" {
 
 data "aws_iam_policy_document" "assume_n2g_role" {
   statement {
-    sid     = "AllowAssumeFromN2GAccount"
+    sid     = "AllowAssumeFromN2GUser"
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
 
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${var.n2g_account_id}:root"]
+      identifiers = ["arn:aws:iam::${var.n2g_account_id}:user/N2G-AUDITING"]
     }
 
     dynamic "condition" {
@@ -39,3 +39,4 @@ data "aws_iam_policy_document" "assume_n2g_role" {
     }
   }
 }
+

@@ -6,6 +6,57 @@ locals {
   bucket_name = "${var.project}-${var.env}-cloudtrail-${data.aws_caller_identity.current.account_id}"
 }
 
+# ----------------------------
+# KMS key for CloudTrail log file encryption
+# ----------------------------
+resource "aws_kms_key" "cloudtrail" {
+  description             = "KMS key for CloudTrail log file encryption"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      # Account root full control
+      {
+        Sid      = "AllowRootAccountAdmin"
+        Effect   = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      # Allow CloudTrail to use the key
+      {
+        Sid    = "AllowCloudTrailUseKey"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = "${data.aws_caller_identity.current.account_id}"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_kms_alias" "cloudtrail" {
+  name          = "alias/${var.project}-${var.env}-cloudtrail"
+  target_key_id = aws_kms_key.cloudtrail.key_id
+}
+
 # --- S3 bucket for CloudTrail logs ---
 resource "aws_s3_bucket" "cloudtrail" {
   bucket = local.bucket_name
@@ -27,6 +78,7 @@ resource "aws_s3_bucket_versioning" "cloudtrail" {
   }
 }
 
+# Bucket encryption at rest (already OK)
 resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
   rule {
@@ -104,6 +156,9 @@ resource "aws_cloudtrail" "this" {
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_logging                = true
+
+  # ✅ This fixes the CloudTrail encryption-at-rest finding in Security Hub
+  kms_key_id = aws_kms_key.cloudtrail.arn
 
   cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
   cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_to_cw.arn

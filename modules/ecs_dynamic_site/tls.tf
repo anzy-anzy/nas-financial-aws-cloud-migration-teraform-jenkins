@@ -1,6 +1,6 @@
 resource "aws_acm_certificate" "dynamic" {
-  domain_name       = var.dynamic_fqdn
-  validation_method = "DNS"
+  domain_name               = var.dynamic_fqdn
+  validation_method         = "DNS"
 
   tags = merge(var.tags, {
     Name = "${var.project}-${var.env}-acm-${var.dynamic_fqdn}"

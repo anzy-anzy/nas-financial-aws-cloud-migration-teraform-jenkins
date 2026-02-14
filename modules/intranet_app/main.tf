@@ -10,6 +10,11 @@ data "aws_ami" "al2" {
   }
 }
 
+locals {
+  selected_ami = var.ami_id != "" ? var.ami_id : data.aws_ami.al2.id
+}
+
+
 # --- Security Group: allow HTTP only from inside VPC (or corp CIDR if provided) ---
 locals {
   allowed_http_cidrs = var.corp_cidr != "" ? [var.corp_cidr] : [var.vpc_cidr]
@@ -70,7 +75,7 @@ resource "aws_iam_instance_profile" "this" {
 
 # --- EC2 in PRIVATE subnet, no public IP ---
 resource "aws_instance" "intranet" {
-  ami                    = data.aws_ami.al2.id
+  ami                    = local.selected_ami
   instance_type          = var.instance_type
   subnet_id              = var.private_subnet_ids[0]
   vpc_security_group_ids = [aws_security_group.intranet.id]
@@ -88,7 +93,13 @@ resource "aws_instance" "intranet" {
               systemctl start httpd
               EOF
 
-  tags = merge(var.tags, { Name = "${var.project}-${var.env}-intranet-ec2" })
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.env}-intranet-ec2"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # --- Private Route53 record pointing to the private IP ---
