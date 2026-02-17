@@ -52,9 +52,9 @@ This phase sets up the repository structure and Terraform baseline required for 
 ## Repository Structure
 ```bash
 nas-financial-aws-cloud-migration-terraform-jenkins/
-├── modules/ 
+├── modules/  
 │ ├── iam/  variables.tf outputs.tf policies.tf roles.tf trust.tf 
-│ ├── network/ empty
+│ ├── network/ variables.tf outputs.tf 
 │ ├── storage/
 │ ├── budget/ main.tf variables.tf outputs.tf
 │ ├── ecs_dynamic_site/ variables.tf outputs.tf alb.tf ecs.tf iam.tf route53.tf service.tf task.tf tls.tf 
