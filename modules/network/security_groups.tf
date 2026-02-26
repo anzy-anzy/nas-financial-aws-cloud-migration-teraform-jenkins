@@ -74,8 +74,7 @@ resource "aws_security_group" "db" {
     protocol        = "tcp"
     security_groups = [aws_security_group.app_dynamic.id]
   }
-
-  egress {
+    egress {
     description = "All outbound (RDS managed)"
     from_port   = 0
     to_port     = 0
@@ -114,3 +113,4 @@ resource "aws_security_group" "alb_internal" {
     Name = "${var.project}-${var.env}-sg-alb-internal"
   })
 }
+

@@ -25,3 +25,7 @@ output "sg_db_id" {
 output "sg_alb_internal_id" {
   value = aws_security_group.alb_internal.id
 }
+
+output "private_route_table_id" {
+  value = aws_route_table.private.id
+}

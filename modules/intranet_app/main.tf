@@ -17,7 +17,11 @@ locals {
 
 # --- Security Group: allow HTTP only from inside VPC (or corp CIDR if provided) ---
 locals {
-  allowed_http_cidrs = var.corp_cidr != "" ? [var.corp_cidr] : [var.vpc_cidr]
+  allowed_http_cidrs = compact([
+    var.vpc_cidr,
+    var.corp_cidr != "" ? var.corp_cidr : null,
+    var.vpn_client_cidr != "" ? var.vpn_client_cidr : null
+  ])
 }
 
 resource "aws_security_group" "intranet" {

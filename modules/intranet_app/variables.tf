@@ -51,3 +51,9 @@ variable "ami_id" {
   description = "Optional AMI ID to pin intranet EC2."
   default     = ""
 }
+
+variable "vpn_client_cidr" {
+  description = "Client VPN CIDR block (e.g. 10.200.0.0/22)"
+  type        = string
+  default     = ""
+}

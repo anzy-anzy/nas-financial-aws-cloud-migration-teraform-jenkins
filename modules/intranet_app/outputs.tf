@@ -9,3 +9,7 @@ output "intranet_private_ip" {
 output "intranet_url" {
   value = "http://${var.intranet_fqdn}"
 }
+
+output "intranet_sg_id" {
+  value = aws_security_group.intranet.id
+}
