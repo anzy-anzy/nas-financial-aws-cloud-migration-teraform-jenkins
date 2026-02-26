@@ -40,3 +40,11 @@ output "rds_secret_arn" {
 output "alerts_topic_arn" {
   value = module.rds.alerts_topic_arn
 }
+
+output "pii_bucket_name" {
+  value = module.storage.bucket_name
+}
+
+output "pii_kms_key_arn" {
+  value = module.storage.kms_key_arn
+}

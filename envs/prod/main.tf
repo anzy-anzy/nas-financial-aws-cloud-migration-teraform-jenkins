@@ -1,10 +1,3 @@
-locals {
-  tags = {
-    Project     = var.project
-    Environment = var.env
-    ManagedBy   = "Terraform"
-  }
-}
 
 module "iam" {
   source = "../../modules/iam"
@@ -166,6 +159,8 @@ module "intranet_app" {
   private_subnet_ids = module.network.private_subnet_ids
   vpc_cidr           = "10.0.0.0/16"
 
+  vpn_client_cidr = "10.200.0.0/22"
+
   route53_zone_id = aws_route53_zone.private_anzyworld.zone_id
   intranet_fqdn   = "intranet.anzyworld.com"
 
@@ -228,10 +223,68 @@ module "budget" {
   limit_usd    = 30
   alert_emails = ["anselmebsiy59@gmail.com"]
 }
+module "client_vpn" {
+  source = "../../modules/client_vpn"
 
-module "security_hub" {
-  source  = "../../modules/security_hub"
-  project = var.project
-  env     = var.env
+  project            = var.project
+  env                = var.env
+  vpc_id             = module.network.vpc_id
+  private_subnet_ids = module.network.private_subnet_ids
+
+  # Use the SAME VPC CIDR you gave the network module
+  vpc_cidr = "10.0.0.0/16"
+
+  client_cidr_block = "10.200.0.0/22"
+
+
+  server_certificate_arn      = "arn:aws:acm:us-east-1:436083576844:certificate/21244342-7851-49f7-91d2-730127032b8c"
+  client_root_certificate_arn = "arn:aws:acm:us-east-1:436083576844:certificate/e170fe1d-72ac-4c7c-9a70-ea4ebc48c3e2"
+
+  # Use the local tags you already defined
+  tags = local.tags
 }
 
+resource "aws_security_group_rule" "db_from_vpn" {
+  type                     = "ingress"
+  security_group_id        = module.network.sg_db_id
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  source_security_group_id = module.client_vpn.vpn_sg_id
+  description              = "Allow MySQL from Client VPN"
+}
+
+resource "aws_security_group_rule" "intranet_from_vpn" {
+  type                     = "ingress"
+  security_group_id        = module.network.sg_alb_internal_id
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = module.client_vpn.vpn_sg_id
+  description              = "Allow HTTP to intranet ALB from Client VPN"
+}
+
+module "transit_gateway" {
+  source = "../../modules/transit_gateway"
+
+  project = var.project
+  env     = var.env
+  tags    = local.tags
+
+  nas_vpc_id                 = module.network.vpc_id
+  nas_private_subnet_ids     = module.network.private_subnet_ids
+  nas_private_route_table_id = module.network.private_route_table_id
+
+  n2g_account_id = "370445361290"
+  n2g_vpc_cidr   = "172.31.0.0/16"
+}
+
+module "storage" {
+  source = "../../modules/storage"
+
+  bucket_name           = var.pii_bucket_name
+  kms_alias_name        = var.pii_kms_alias_name
+  archive_after_days    = 30
+  archive_storage_class = "GLACIER"
+  expire_after_days     = 1825
+}

@@ -47,3 +47,25 @@ variable "jenkins_fqdn" {
   type    = string
   default = "jenkins.anzyworld.com"
 }
+
+variable "vpc_cidr" {
+  description = "CIDR block for the NAS VPC"
+  type        = string
+}
+
+variable "tags" {
+  description = "Common tags for all resources"
+  type        = map(string)
+  default     = {}
+}
+
+variable "pii_bucket_name" {
+  type        = string
+  description = "Unique S3 bucket name for NAS customer PII files"
+}
+
+variable "pii_kms_alias_name" {
+  type        = string
+  description = "KMS alias (without alias/ prefix) for S3 encryption key"
+  default     = "nas-pii-s3-key"
+}
