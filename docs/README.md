@@ -1910,3 +1910,97 @@ We implemented the following AWS services:
 
 <img width="1920" height="1049" alt="Screenshot (1577)" src="https://github.com/user-attachments/assets/a03bb33b-72e5-4d67-a5c0-b0682ae0a826" />
 
+#### Made changes  and ran the pipeline
+<img width="1920" height="986" alt="Screenshot (1578)" src="https://github.com/user-attachments/assets/e7c591af-b10c-4dab-bf9d-5a1c86cf67a5" />
+
+
+## 📄 Final Project Conclusion
+
+NAS Financial Group – AWS Cloud Migration & Secure Architecture Implementation
+
+The NAS Financial Group successfully migrated its on-premise workloads to a secure, highly available, and compliant AWS cloud architecture designed according to AWS Well-Architected Framework principles.
+
+The implemented solution achieves the following:
+
+⸻
+
+🏗 Architecture & Availability
+	•	Multi-AZ VPC architecture with public and private subnets
+	•	NAT Gateway and Internet Gateway for controlled connectivity
+	•	Highly available ECS-based dynamic website behind an Application Load Balancer
+	•	Auto-scaling and self-healing container workloads
+	•	Separate static website for non-US users using CloudFront geo-routing
+
+The system is designed for high availability, fault tolerance, and traffic scalability.
+
+⸻
+
+🔐 Security & Compliance
+	•	HTTPS enforced using ACM certificates (PCI compliance)
+	•	Geo-restriction logic implemented for GDPR compliance
+	•	Secrets Manager used for secure database credential storage
+	•	IAM least-privilege roles implemented across services
+	•	Systems Manager (SSM) used instead of SSH for secure server management
+	•	PII data encrypted at rest using KMS-managed encryption keys
+	•	Public access fully blocked for storage resources
+
+⸻
+
+🗄 Database & Disaster Recovery
+	•	Amazon RDS deployed in Multi-AZ configuration
+	•	Automated backups managed via AWS Backup
+	•	Backup vaults configured in two separate AWS regions
+	•	Cross-region backup replication implemented
+	•	Dedicated disaster recovery vault for business continuity
+
+This ensures both data durability and regional disaster recovery protection.
+
+⸻
+
+🔍 Monitoring, Auditing & Visibility
+	•	AWS CloudTrail enabled for full API auditing
+	•	CloudTrail integrated with CloudWatch Logs
+	•	Security metric filters and alarms configured
+	•	SNS notifications for operational alerts
+	•	VPC Flow Logs enabled
+	•	Amazon Managed Grafana deployed for centralized observability
+	•	AWS Well-Architected Tool used to provide centralized auditing access for N2G Auditing with restricted permissions
+
+This ensures continuous visibility, governance, and compliance monitoring.
+
+⸻
+
+🏢 Internal Application (Intranet)
+	•	Private EC2 instance deployed in private subnet
+	•	Internal Application Load Balancer
+	•	Access restricted via Client VPN and Transit Gateway
+	•	No public exposure
+	•	Secure management via SSM
+
+The intranet application remains isolated from public internet traffic while maintaining secure internal accessibility.
+
+⸻
+
+🗂 PII Storage Strategy
+	•	Encrypted S3 bucket with KMS key
+	•	Lifecycle policy: 30 days active access
+	•	Automated archival
+	•	Long-term retention (5 years)
+	•	Versioning enabled
+	•	Public access blocked
+
+This satisfies both encryption and regulatory retention requirements.
+
+⸻
+
+🎯 Overall Assessment
+
+The solution fully satisfies the business, security, compliance, disaster recovery, and auditing requirements defined in the project brief.
+
+The architecture is:
+	•	Highly Available
+	•	Secure by Design
+	•	Compliant (PCI & GDPR-aligned)
+	•	Disaster Recovery Ready
+	•	Fully Automated via Terraform (Infrastructure as Code)
+	•	CI/CD enabled through Jenkins pipeline
