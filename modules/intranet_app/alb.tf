@@ -1,5 +1,5 @@
 resource "aws_lb" "intranet_internal" {
-  name               = "${var.project}-${var.env}-alb-intranet-internal"
+  name               = "${var.project}-${var.env}-intra-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [var.alb_internal_sg_id]
