@@ -44,7 +44,7 @@ ingress {
   to_port     = var.http_port
   protocol    = "tcp"
   cidr_blocks = var.vpn_client_cidr != "" ? [var.vpn_client_cidr] : []
-}}
+}
 
   # no SSH rule at all
 
