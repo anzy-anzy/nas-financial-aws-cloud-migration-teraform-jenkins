@@ -37,9 +37,11 @@ pipeline {
           sudo mkdir -p "${TMPDIR}"
           sudo chmod 1777 "${TMPDIR}"
 
-          # terraform plugin cache (must be writable by the build user)
+          # terraform plugin cache on disk
           sudo mkdir -p "${TF_PLUGIN_CACHE_DIR}"
-          sudo chown -R "$(id -un)":"$(id -gn)" "${TF_PLUGIN_CACHE_DIR}"
+
+          # Make it writable regardless of which user Jenkins runs as
+          sudo chmod -R 777 "${TF_PLUGIN_CACHE_DIR}"
 
           ls -ld "${TMPDIR}" "${TF_PLUGIN_CACHE_DIR}"
         '''
@@ -49,14 +51,11 @@ pipeline {
     stage('Detect Branch') {
       steps {
         script {
-          // In a single Pipeline job, BRANCH_NAME may be empty.
-          // This reads the actual checked-out branch name.
           env.GIT_BRANCH_NAME = sh(
             script: 'git rev-parse --abbrev-ref HEAD',
             returnStdout: true
           ).trim()
 
-          // If Jenkins checked out a detached HEAD, try to resolve the remote branch
           if (env.GIT_BRANCH_NAME == 'HEAD') {
             env.GIT_BRANCH_NAME = sh(
               script: "git name-rev --name-only HEAD | sed 's#remotes/origin/##' | head -n1",
@@ -114,6 +113,27 @@ pipeline {
       }
     }
 
+    stage('Create terraform.auto.tfvars (do NOT commit tfvars)') {
+      steps {
+        sh '''
+          set -euxo pipefail
+
+          # Create the env dir if needed
+          mkdir -p "${ENV_DIR}"
+
+          # Write variables Terraform needs (auto-loaded by Terraform)
+          cat > "${ENV_DIR}/terraform.auto.tfvars" <<'EOF'
+vpc_cidr        = "10.0.0.0/16"
+pii_bucket_name = "nas-financial-pii-storage-unique-001"
+EOF
+
+          echo "Created ${ENV_DIR}/terraform.auto.tfvars"
+          # Show file names (not contents) to confirm it exists
+          ls -la "${ENV_DIR}"
+        '''
+      }
+    }
+
     stage('Terraform Init') {
       steps {
         sh '''
@@ -141,10 +161,10 @@ pipeline {
           set -euxo pipefail
           cd "${ENV_DIR}"
 
-          # sanity check: ensure tfvars is present
-          ls -la terraform.tfvars
+          # Confirm the tfvars exists before planning
+          ls -la terraform.auto.tfvars
 
-          terraform plan -var-file=terraform.tfvars -out=tfplan
+          terraform plan -out=tfplan
         '''
         archiveArtifacts artifacts: "${ENV_DIR}/tfplan", fingerprint: true
       }
@@ -169,8 +189,7 @@ pipeline {
         sh '''
           set -euxo pipefail
           cd "${ENV_DIR}"
-
-          terraform apply -auto-approve -var-file=terraform.tfvars tfplan
+          terraform apply -auto-approve tfplan
         '''
       }
     }
