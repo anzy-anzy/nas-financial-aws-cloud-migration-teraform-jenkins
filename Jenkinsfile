@@ -140,7 +140,11 @@ pipeline {
         sh '''
           set -euxo pipefail
           cd "${ENV_DIR}"
-          terraform plan -out=tfplan
+
+          # sanity check: ensure tfvars is present
+          ls -la terraform.tfvars
+
+          terraform plan -var-file=terraform.tfvars -out=tfplan
         '''
         archiveArtifacts artifacts: "${ENV_DIR}/tfplan", fingerprint: true
       }
@@ -165,7 +169,8 @@ pipeline {
         sh '''
           set -euxo pipefail
           cd "${ENV_DIR}"
-          terraform apply -auto-approve tfplan
+
+          terraform apply -auto-approve -var-file=terraform.tfvars tfplan
         '''
       }
     }
