@@ -163,6 +163,7 @@ module "intranet_app" {
 
   route53_zone_id = aws_route53_zone.private_anzyworld.zone_id
   intranet_fqdn   = "intranet.anzyworld.com"
+  alb_internal_sg_id = module.network.sg_alb_internal_id
 
   instance_type = "t3.micro"
   http_port     = 80
