@@ -57,3 +57,8 @@ variable "vpn_client_cidr" {
   type        = string
   default     = ""
 }
+
+variable "alb_internal_sg_id" {
+  type        = string
+  description = "Security group ID for the internal ALB"
+}

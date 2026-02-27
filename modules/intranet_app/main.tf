@@ -29,13 +29,22 @@ resource "aws_security_group" "intranet" {
   description = "Intranet EC2 SG (private only)"
   vpc_id      = var.vpc_id
 
-  ingress {
-    description = "HTTP from allowed internal CIDRs"
-    from_port   = var.http_port
-    to_port     = var.http_port
-    protocol    = "tcp"
-    cidr_blocks = local.allowed_http_cidrs
-  }
+ingress {
+  description     = "HTTP from internal ALB only"
+  from_port       = var.http_port
+  to_port         = var.http_port
+  protocol        = "tcp"
+  security_groups = [var.alb_internal_sg_id]
+}
+
+# Optional: keep VPN direct access (if you still want to hit EC2 directly)
+ingress {
+  description = "HTTP from VPN clients (optional)"
+  from_port   = var.http_port
+  to_port     = var.http_port
+  protocol    = "tcp"
+  cidr_blocks = var.vpn_client_cidr != "" ? [var.vpn_client_cidr] : []
+}}
 
   # no SSH rule at all
 
@@ -106,11 +115,16 @@ resource "aws_instance" "intranet" {
   }
 }
 
-# --- Private Route53 record pointing to the private IP ---
+# --- Private Route53 record pointing to an internal alb ---
 resource "aws_route53_record" "intranet" {
   zone_id = var.route53_zone_id
   name    = var.intranet_fqdn
   type    = "A"
-  ttl     = 60
-  records = [aws_instance.intranet.private_ip]
+
+  alias {
+    name                   = aws_lb.intranet_internal.dns_name
+    zone_id                = aws_lb.intranet_internal.zone_id
+    evaluate_target_health = true
+  }
 }
+
