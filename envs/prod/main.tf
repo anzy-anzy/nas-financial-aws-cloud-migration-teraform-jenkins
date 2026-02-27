@@ -161,8 +161,8 @@ module "intranet_app" {
 
   vpn_client_cidr = "10.200.0.0/22"
 
-  route53_zone_id = aws_route53_zone.private_anzyworld.zone_id
-  intranet_fqdn   = "intranet.anzyworld.com"
+  route53_zone_id    = aws_route53_zone.private_anzyworld.zone_id
+  intranet_fqdn      = "intranet.anzyworld.com"
   alb_internal_sg_id = module.network.sg_alb_internal_id
 
   instance_type = "t3.micro"
