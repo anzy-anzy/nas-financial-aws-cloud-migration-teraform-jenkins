@@ -1547,3 +1547,366 @@ Make sure Terraform can write to:
 If needed (one-time server fix):
 ```bash
 sudo chown -R ec2-user:ec2-user /opt/jenkins/tf-plugin-cache
+```
+
+## 11 NAS Financial Group hired **N2G Auditing** to provide visibility and auditing over the NAS internal (intranet) application.
+
+### Requirements
+
+1. N2G must access the **internal web application (HTTP)** from their own AWS account.
+2. N2G must access the **underlying database** securely from their AWS account.
+3. N2G must have a **centralized auditing service** to review NAS best practices:
+   - Cost Optimization
+   - Performance Efficiency
+   - Security
+   - Reliability (Fault Tolerance)
+4. N2G console access must allow **full access ONLY to the auditing service and nothing else**.
+
+---
+
+### Solution Architecture
+
+To meet these requirements, we implemented:
+
+- AWS Transit Gateway (TGW) for cross-account private connectivity
+- AWS Resource Access Manager (RAM) for sharing resources
+- Strict Security Group controls
+- Cross-account IAM Role for auditing access
+- AWS Well-Architected Tool for centralized best-practice review
+
+---
+
+### Part 1 – Cross-Account Network Connectivity
+
+#### Step 1 – Created Transit Gateway (NAS Account)
+
+Service used:
+VPC → Transit Gateway
+
+Created:
+- `NAS-TGW`
+
+Actions performed:
+- Attached NAS VPC to Transit Gateway
+- Enabled route propagation
+- Verified attachment status = Available
+
+---
+<img width="1920" height="960" alt="Screenshot (1557)" src="https://github.com/user-attachments/assets/cc1cb96d-db18-40f1-9e11-035df3a20435" />
+<img width="1920" height="960" alt="Screenshot (1558)" src="https://github.com/user-attachments/assets/5116cdf5-6fed-4e48-85b0-4d20bb0cbf41" />
+
+#### Step 2 – Shared Transit Gateway with N2G Account
+
+Service used:
+AWS Resource Access Manager (RAM)
+
+Actions performed:
+- Created Resource Share
+- Added Transit Gateway as shared resource
+- Entered N2G AWS Account ID
+- N2G accepted the resource share
+
+---
+<img width="1920" height="966" alt="Screenshot (1555)" src="https://github.com/user-attachments/assets/4e484ee6-4fd2-491f-aba3-538a5197c94c" />
+<img width="1920" height="948" alt="Screenshot (1549)" src="https://github.com/user-attachments/assets/637abed6-30e8-4eea-919f-e44a128b8a72" />
+
+#### Step 3 – Attached N2G VPC to Transit Gateway
+
+In N2G Account:
+- Created TGW VPC Attachment
+- Selected their VPC and private subnets
+- Updated N2G Route Table:
+
+Destination:
+NAS-VPC-CIDR
+
+Target:
+Transit Gateway
+
+---
+<img width="1920" height="986" alt="Screenshot (1550)" src="https://github.com/user-attachments/assets/116b21d5-64bd-4ee3-89ec-44476ffe9e66" />
+
+
+#### Step 4 – Updated NAS Route Tables
+
+In NAS Account:
+Updated private subnet route tables:
+
+Destination:
+N2G-VPC-CIDR
+
+Target:
+Transit Gateway
+
+This established secure private connectivity between NAS and N2G accounts.
+
+---
+<img width="1920" height="994" alt="Screenshot (1551)" src="https://github.com/user-attachments/assets/c627ccd9-d7f4-418f-a66e-e94dae6de44b" />
+
+### Part 2 – Restricting Application Access
+
+#### Internal Web Application Access
+
+The NAS internal application is hosted behind a **Private Application Load Balancer (ALB)**.
+
+Modified ALB Security Group:
+
+Inbound Rule:
+- Type: HTTP
+- Port: 80
+- Source: N2G-VPC-CIDR
+
+No public access allowed.
+ALB remains internal-only.
+
+---
+<img width="1920" height="917" alt="Screenshot (1559)" src="https://github.com/user-attachments/assets/3907ffa5-6332-4d31-ad90-268a82663ab1" />
+
+#### Database Access (Amazon RDS)
+
+Database hosted in private subnet.
+
+Modified RDS Security Group:
+
+Inbound Rule:
+- Port: 3306 (MySQL) or 5432 (Postgres)
+- Source: N2G-VPC-CIDR
+
+No public IP assigned.
+Database remains private.
+
+---
+<img width="1920" height="952" alt="Screenshot (1560)" src="https://github.com/user-attachments/assets/ea634f06-5654-4c80-8897-9075ffbcf3c5" />
+
+#### TESTING CONECTIVITY TO INTRANET AND DATABASE
+<img width="1920" height="970" alt="Screenshot (1563)" src="https://github.com/user-attachments/assets/dd2809bb-38c9-48f5-984d-79b2ee57ef76" />
+
+
+### Part 3 – Centralized Auditing Service
+
+#### Selected Service: AWS Well-Architected Tool
+
+Reason:
+
+The AWS Well-Architected Tool provides centralized visibility into:
+
+- Cost Optimization
+- Performance Efficiency
+- Security
+- Reliability
+- Sustainability
+
+This directly satisfies auditing requirements.
+
+---
+
+### Part 4 – Restricting Console Access to ONLY the Auditing Service
+
+We implemented cross-account IAM Role access.
+
+#### Step 1 – Created IAM Role in NAS Account
+
+Role Name:
+N2G-WellArchitected-Audit-Role
+
+Trust Policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<N2G_ACCOUNT_ID>:root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+This allows only N2G’s AWS account to assume the role.
+
+---
+
+#### Step 2 – Attached Strict Permission Policy
+
+Policy allowing only Well-Architected Tool access:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "wellarchitected:*",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Deny",
+      "NotAction": [
+        "wellarchitected:*",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+This ensures:
+
+- Full access to AWS Well-Architected Tool
+- No access to EC2, VPC, RDS, IAM, S3, or any other AWS services
+
+---
+<img width="1920" height="1080" alt="Screenshot (1561)" src="https://github.com/user-attachments/assets/fe34d17e-c8cc-46db-ac19-f5d099906b09" />
+<img width="1920" height="1080" alt="Screenshot (1561)" src="https://github.com/user-attachments/assets/ddf538ec-b835-4114-87f8-6e0f238b36f3" />
+<img width="1920" height="978" alt="Screenshot (1567)" src="https://github.com/user-attachments/assets/a63e8031-c824-4571-b93e-30f20f19d8fc" />
+
+### Resources Created
+
+- Transit Gateway (NAS)
+- TGW Resource Share (RAM)
+- TGW VPC Attachments (NAS + N2G)
+- IAM Role: N2G-WellArchitected-Audit-Role
+- IAM Permission Policy (Well-Architected only)
+
+---
+
+### Resources Modified
+
+- NAS VPC Route Tables
+- N2G VPC Route Tables
+- ALB Security Group
+- RDS Security Group
+
+---
+
+### Security Controls Implemented
+
+- No public exposure of internal application
+- No public RDS access
+- CIDR-restricted access from N2G only
+- Cross-account IAM role (no IAM users created)
+- Least privilege enforced
+- Service-level restriction for auditing console
+
+---
+
+### Final Outcome
+
+N2G Auditing can now:
+
+- Access NAS internal web application via HTTP over private connectivity
+- Access NAS database securely from their AWS account
+- Review NAS best practices using AWS Well-Architected Tool
+- Access ONLY the auditing service and nothing else
+
+---
+<img width="1920" height="938" alt="Screenshot (1544)" src="https://github.com/user-attachments/assets/2d3a7ca8-ef4a-4b20-aefc-c34f77a6698b" />
+
+### Architecture Summary
+
+NAS Account:
+- Private VPC
+- Internal ALB
+- RDS (Private)
+- Transit Gateway
+- IAM Audit Role
+
+N2G Account:
+- Separate VPC
+- TGW Attachment
+- AssumeRole access to auditing service
+
+---
+
+# Compliance With Requirements
+
+✔ Internal application access only  
+✔ Database access restricted  
+✔ Cross-account private connectivity  
+✔ Centralized best-practice review  
+✔ Strict least-privilege console access
+
+# TESTING: AWS Client VPN (Remote Auditor Access)
+
+To allow N2G auditors to securely access the NAS internal application from their laptops (outside AWS), we implemented **AWS Client VPN**.
+
+### Purpose
+AWS Client VPN provides secure, encrypted user-level access into the N2G VPC. Once connected, traffic flows:
+
+Auditor Laptop  
+→ AWS Client VPN Endpoint (N2G Account)  
+→ N2G VPC  
+→ Transit Gateway  
+→ NAS VPC  
+→ Internal ALB (HTTP) and RDS  
+
+### Security Controls
+- VPN authentication required (certificate or IAM-based).
+- Access restricted to specific CIDR ranges.
+- Security groups allow only:
+  - HTTP (port 80) to internal ALB
+  - Database port (3306/5432) to RDS
+- No public exposure of NAS resources.
+<img width="1920" height="872" alt="Screenshot (1542)" src="https://github.com/user-attachments/assets/147e49d3-aa47-4e90-8145-fabe78c080d2" />
+<img width="1920" height="1080" alt="Screenshot (1533)" src="https://github.com/user-attachments/assets/c0b53446-d856-446f-b495-773baf63f0f4" />
+<img width="1920" height="982" alt="Screenshot (1534)" src="https://github.com/user-attachments/assets/50bca94c-1b75-4316-a710-27cff1cf75e3" />
+<img width="1920" height="938" alt="Screenshot (1544)" src="https://github.com/user-attachments/assets/26bdbbc4-6599-4fd1-b2e9-a1cd1a4decc2" />
+
+### Why Client VPN Was Used
+Client VPN ensures that only authenticated auditors can access the private intranet application without exposing it to the internet.
+
+> Note: Client VPN is required only if auditors connect from outside AWS. If access is performed from an EC2 instance within the N2G VPC, Transit Gateway connectivity alone is sufficient.
+
+## phase 12 PII Storage Solution – NAS Financial Group
+
+### 📌 Requirement
+
+NAS Financial Group stores customer files containing Personally Identifiable Information (PII).
+
+The solution must:
+
+- Encrypt data at rest
+- Allow frequent access for 30 days
+- Archive after 30 days
+- Retain records for 5 years
+- Prevent public access
+- Follow AWS security best practices
+
+---
+
+### 🏗️ Architecture Decision
+
+We implemented the following AWS services:
+
+- Amazon S3 – Primary storage
+- AWS KMS – Encryption key management
+- S3 Lifecycle Policy – Automated archival and retention
+- S3 Versioning – Data protection
+- S3 Public Access Block – Security enforcement
+
+---
+
+## 🔐 Security Controls Implemented
+
+### 1️⃣ Encryption at Rest (SSE-KMS)
+
+- Created a dedicated KMS key
+- Enabled automatic key rotation
+- Enforced encryption using SSE-KMS
+- Added a bucket policy to deny unencrypted uploads
+
+<img width="1920" height="873" alt="Screenshot (1574)" src="https://github.com/user-attachments/assets/70c7dac2-0c20-4d36-b63a-e65eb994920e" />
+<img width="1920" height="929" alt="Screenshot (1573)" src="https://github.com/user-attachments/assets/d4d24cef-d358-41d6-85e8-2178e021a6d4" />
+<img width="1920" height="910" alt="Screenshot (1571)" src="https://github.com/user-attachments/assets/7135f8fc-19eb-4532-860e-6f00efed9d2a" />
+
+## CONCLUDING
+#### RERUN THE PIPELINE SO IT CAN BE UP TO DATE
+- last run was 18 days ago
+
+<img width="1920" height="1049" alt="Screenshot (1577)" src="https://github.com/user-attachments/assets/a03bb33b-72e5-4d67-a5c0-b0682ae0a826" />
+
