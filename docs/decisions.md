@@ -122,7 +122,7 @@ It acts as an “architecture contract” to keep implementation consistent acro
 ### Accessibility
 - Intranet is **not publicly accessible**
 - Deployed into **private subnets** only
-- Accessible via **HTTP** (internal requirement)
+- Accessible via **HTTP** (internal Load balancer)
 
 ### Outbound Updates
 - Intranet servers/tasks must be able to download packages and updates from the internet
@@ -140,11 +140,13 @@ It acts as an “architecture contract” to keep implementation consistent acro
 ### Cross-Account Requirement
 - N2G operates from **their own AWS account**
 - Access is enabled via **cross-account role assumption**
+- Acess intranet and rds
 
 ### Access Scope
 - N2G is allowed:
-  - HTTP access to intranet web interface (controlled by networking/security groups)
+  - HTTP access to intranet web interface thats behind and internal load balancer (controlled by networking/security groups)
   - Restricted database access (least privilege, only what is needed)
+  - private subnets
 
 ### Best Practices Review Service
 - N2G must have centralized visibility into best practices:
@@ -156,7 +158,9 @@ It acts as an “architecture contract” to keep implementation consistent acro
 ✅ Chosen Service: **AWS Well-Architected Tool**  
 - N2G console permissions should grant **full access to Well-Architected Tool ONLY**
 - No access to other AWS services
-
+✅ **Transit gateway** conects vpc of both account so n2g can access private subnet
+**AWS Client VPN** for remote auditors and testing purposes.
+  
 ---
 
 ## 10. Monitoring & Alerting (Minimum 2 Systems)
@@ -168,6 +172,12 @@ It acts as an “architecture contract” to keep implementation consistent acro
 ### Monitoring System 2 (Additional)
 - **Route 53 Health Checks** for endpoint availability
 - Route 53 health check alarms notify via SNS
+
+### Amazon Managed Grafana
+- more visualisation
+
+### Cloud trail
+- Picks up logs about who is doing what or chnages made
 
 Goal: Receive notifications if the website is down or unhealthy.
 
