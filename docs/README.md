@@ -32,13 +32,12 @@ This phase sets up the repository structure and Terraform baseline required for 
   - N2G Auditing account (separate AWS account) using a provider alias
 
 ### ✅ Locked decisions (key project settings)
-- **NAS Account ID:** `436083576844`
-- **N2G Auditing Account ID:** `370445361290`
+- **NAS Account ID:**
+- **N2G Auditing Account ID:** 
 - **Primary Region:** `us-east-1`
 - **DR Region:** `us-west-2`
 - **Domain:** `anzyworld.com`
-- **Route 53 Hosted Zone ID:** `Z06049403PYBB5K85PB4V`
-- **Subdomains:**
+- **Route 53 Hosted Zone ID:** 
   - Dynamic (US only): `app.anzyworld.com`
   - Static (non-US): `stop.anzyworld.com`
   - Jenkins: `jenkins.anzyworld.com`
@@ -102,8 +101,8 @@ Terraform state is stored remotely in an S3 bucket with DynamoDB locking to prev
 This project uses AWS CLI profiles (best practice) to separate access between accounts.
 
 Expected profiles:
-- `nas-prod`  → NAS account (`436083576844`)
-- `n2g-audit` → N2G Auditing account (`370445361290`)
+- `nas-prod`  → NAS account
+- `n2g-audit` → N2G Auditing account
 
 Verify profiles:
 ```bash
@@ -187,9 +186,9 @@ Defines trust relationships (assume role policies) that control who can assume e
 **outputs.tf**
 Exposes the ARNs of all IAM roles created by the module, allowing them to be referenced by other Terraform modules and for testing role assumption.
 
-### Step 2 — Start with the simplest role
+### Step 2 Start with the simplest role
 
-We always begin with:
+I  begin with:
 👉 CloudSpace Engineers role
 
 Why?
