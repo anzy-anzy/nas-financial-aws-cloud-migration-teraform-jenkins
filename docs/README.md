@@ -54,7 +54,7 @@ nas-financial-aws-cloud-migration-terraform-jenkins/
 ├── modules/  
 │ ├── iam/  variables.tf outputs.tf policies.tf roles.tf trust.tf 
 │ ├── network/ variables.tf outputs.tf 
-│ ├── storage/
+│ ├── storage/ variables.tf  main.tf outputs.tf
 │ ├── budget/ main.tf variables.tf outputs.tf
 │ ├── ecs_dynamic_site/ variables.tf outputs.tf alb.tf ecs.tf iam.tf route53.tf service.tf task.tf tls.tf 
 │ ├── intranet_app/ main.tf variables.tf outputs.tf
@@ -63,11 +63,17 @@ nas-financial-aws-cloud-migration-terraform-jenkins/
 │ ├── grafana/ main.tf variables.tf outputs.tf
 │ ├── vpc_flow_logs/ main.tf variables.tf outputs.tf
 │ ├── auditing/ main.tf variables.tf outputs.tf alarms.tf cloudwatch.tf
-│ ├── monitoring/ emty
+│ ├── Client VPN/ variables.tf  main.tf outputs.tf
+│ ├── Transit gate/ variables.tf  main.tf outputs.tf
 │ └── jenkins/ main.tf variables.tf outputs.tf
 ├── Jenkinsfiles
 ├── envs/
 │ └── prod/ # Production environment (root Terraform execution directory)
+│ ├── .terraform
+│ ├── tfplan
+│ ├── local.tf
+  ├── .terraform.lock.hcl
+  ├── n2g_access_rules.tf
 │ ├── backend.tf
 │ ├── providers.tf
 │ ├── versions.tf
